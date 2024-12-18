@@ -870,10 +870,80 @@ builder.Services.ConfigureServiceManager();
 
 Another separate project for Controller logic also?
 
-This will improve design by isolating the **presentation layer**, which serves as the entry point for system interaction (e.g., REST APIs). This separation enforces stricter rules, preventing controllers from injecting anything they want and avoiding tight coupling with other projects. It aligns with the layered architecture approach, similar to splitting the service layer into Service.Contracts and Service projects.
+This will improve design by isolating the **presentation layer**, which serves as the entry point for system interaction (e.g., REST APIs). This separation enforces stricter rules, preventing controllers from injecting anything they want and avoiding tight coupling with other projects; our presentation layer will depend only on the `service.contracts`, thus imposing more strict rules on our controllers.
+
+- Create new class lib project - `Presentation`
+
+- Inside `Presentation.csproj` file, we are going to add a new framework reference so it has access to the `ControllerBase` class for our future controllers:
+
+`Presentation\Presentation.csproj`
+```jsx
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+```
+
+- Additionally, let’s create a single class inside the Presentation project:
+
+```csharp
+namespace Presentation;
+public static class AssemblyReference { }
+```
+
+It's an empty static class that we are going to use for the assembly reference inside the main project.
+
+- The one more thing, we have to do is to reference the `Service.Contracts` project inside the Presentation project.
+- Next, we have to reference the `Presentation` project inside the main project - `API`. As you can see, our presentation layer depends only on the service contracts, thus imposing more strict rules on our controllers.
+- Now, we are going to delete the `Controllers` folder and the `WeatherForecast.cs` file from the main project because we are not going to need them anymore.
+
+- Then, we have to modify the `Program.cs` file:
+
+```csharp
+builder.Services.AddControllers()
+                .AddApplicationPart(typeof(Presentation.AssemblyReference).Assembly);
+```
+
+
+- let’s navigate to the `Presentation` project, create a new folder named `Controllers`, and
+then a new class named `BaseApiController`.
+
+`Presentation\Controllers\BaseApiController.cs`
+```csharp
+using Microsoft.AspNetCore.Mvc;
+namespace Presentation.Controllers;
+
+[Route("api/[controller]")]
+[ApiController]
+public class BaseApiController : ControllerBase { }
 
 
 
+```
+
+this will work as our base `/api/` route.
+
+Lets create a test controller inheriting the base
+
+```csharp
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Presentation.Controllers;
+
+[Route("test")]
+[ApiController]
+public class TestController : BaseController
+{
 
 
+    [HttpGet]
+    public Person GetPerson()
+    {
+        var person1 = new Person("John Doe", 30);
+        return person1;
 
+    }
+}
+
+public record Person(string Name, int Age);
+```

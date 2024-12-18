@@ -16,7 +16,8 @@ builder.Services.ConfigureRepositoryManager();
 builder.Services.ConfigureServiceManager();
 
 // ....
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+                .AddApplicationPart(typeof(Presentation.AssemblyReference).Assembly);
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
