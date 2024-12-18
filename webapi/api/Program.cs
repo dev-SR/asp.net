@@ -1,13 +1,20 @@
 using Scalar.AspNetCore;
 using api.Extensions.ServiceExtensions;
 using Microsoft.AspNetCore.HttpOverrides;
+using NLog;
 
 var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration;
+var nlogConfigFilePath = string.Concat(Directory.GetCurrentDirectory(), "\\nlog.config");
+LogManager.Setup().LoadConfigurationFromFile(nlogConfigFilePath);
 
 // Add services to the container.
 builder.Services.ConfigureCors();
-// builder.Services.ConfigureSqlContext(config);
+builder.Services.ConfigureLoggerService();
+builder.Services.ConfigureSqlContext(config);
+builder.Services.ConfigureRepositoryManager();
+builder.Services.ConfigureServiceManager();
+
 // ....
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
