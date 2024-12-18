@@ -3,7 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Repository;
 
-namespace API;
+namespace API.ContextFactory;
+
 
 public class RepositoryContextFactory : IDesignTimeDbContextFactory<RepositoryContext>
 {

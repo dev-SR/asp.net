@@ -7,7 +7,7 @@ var config = builder.Configuration;
 
 // Add services to the container.
 builder.Services.ConfigureCors();
-builder.Services.ConfigureSqlContext(config);
+// builder.Services.ConfigureSqlContext(config);
 // ....
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
