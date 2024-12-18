@@ -892,8 +892,9 @@ public static class AssemblyReference { }
 
 It's an empty static class that we are going to use for the assembly reference inside the main project.
 
-- The one more thing, we have to do is to reference the `Service.Contracts` project inside the Presentation project.
-- Next, we have to reference the `Presentation` project inside the main project - `API`. As you can see, our presentation layer depends only on the service contracts, thus imposing more strict rules on our controllers.
+- Add reference of `Service.Contracts` project inside the `Presentation` project.
+- Next, add reference of `Presentation` project inside the main project - `API`. 
+  - As you can see, our presentation layer depends only on the service contracts, thus imposing more strict rules on our controllers.
 - Now, we are going to delete the `Controllers` folder and the `WeatherForecast.cs` file from the main project because we are not going to need them anymore.
 
 - Then, we have to modify the `Program.cs` file:
@@ -925,25 +926,15 @@ this will work as our base `/api/` route.
 Lets create a test controller inheriting the base
 
 ```csharp
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-
 namespace Presentation.Controllers;
-
-[Route("test")]
-[ApiController]
-public class TestController : BaseController
+[Route("api/test")]
+public class TestController : BaseApiController
 {
-
-
     [HttpGet]
-    public Person GetPerson()
-    {
+    public Person GetPerson()    {
         var person1 = new Person("John Doe", 30);
         return person1;
-
     }
 }
-
 public record Person(string Name, int Age);
 ```
