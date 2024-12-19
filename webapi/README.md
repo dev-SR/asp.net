@@ -20,6 +20,9 @@
     - [Registering RepositoryContext at a Runtime](#registering-repositorycontext-at-a-runtime)
     - [Adding a Service Layer](#adding-a-service-layer)
     - [Controllers and Routing in WEB API](#controllers-and-routing-in-web-api)
+      - [Routing..](#routing)
+    - [Implementing business logic: Handling GET Requests](#implementing-business-logic-handling-get-requests)
+        - [Getting All Companies From the Database](#getting-all-companies-from-the-database)
 
 
 
@@ -906,30 +909,15 @@ builder.Services.AddControllers()
 
 
 - let’s navigate to the `Presentation` project, create a new folder named `Controllers`, and
-then a new class named `BaseApiController`.
+then a new class named `TestController.cs`.
 
-`Presentation\Controllers\BaseApiController.cs`
-```csharp
-using Microsoft.AspNetCore.Mvc;
-namespace Presentation.Controllers;
-
-[Route("api/[controller]")]
-[ApiController]
-public class BaseApiController : ControllerBase { }
-
-
-
-```
-
-this will work as our base `/api/` route.
-
-Lets create a test controller inheriting the base
+`PPresentation\Controllers\TestController.cs`
 
 ```csharp
 namespace Presentation.Controllers;
 [Route("api/test")]
-public class TestController : BaseApiController
-{
+[ApiController]
+public class TestController : ControllerBase{
     [HttpGet]
     public Person GetPerson()    {
         var person1 = new Person("John Doe", 30);
@@ -938,3 +926,166 @@ public class TestController : BaseApiController
 }
 public record Person(string Name, int Age);
 ```
+
+#### Routing..
+
+There are two ways to implement routing in the project:
+
+- Convention-based routing and
+- Attribute routing
+
+**Convention-based routing** maps URL paths using a predefined structure:  
+- **First part**: Maps to the controller name.  
+- **Second part**: Maps to the action method.  
+- **Third part**: Represents an optional parameter.  
+
+This can be configured in the **Program** class.
+
+```csharp
+app.MapContr011erRoute(
+    name:"default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
+```
+- URL: `api/products/5`  
+  Maps to `ProductsController.Get(int id)`.
+
+**Attribute Routing**  uses the attribute `[Route]` to map the routes directly to the action methods inside the controller. Usually
+
+The ASP.NET Core team recommends using Attribute Routing over Convention-based Routing for Web API projects.
+
+Example:
+```csharp
+[Route("api/products")]
+public class ProductsController : ApiController
+{
+    [Route("")] // Matches "api/products"
+    public IEnumerable<string> GetAll() => new[] { "Product1", "Product2" };
+
+    [Route("{id:int}")] // Matches "api/products/5"
+    public string GetById(int id) => $"Product {id}";
+}
+```
+
+Different actions can use the same URI with different HTTP methods, such as `GET`, `POST`, or `DELETE` on `/api/companies`. Similarly, the same HTTP method can use different URIs for different actions—for example, `GET /api/companies` retrieves all companies, while `GET /api/companies/{companyId}` retrieves a specific company.
+
+Naming Our Resources
+
+The resource name in a URI should always be a **noun**, not an action. For example, use `/api/companies` to get all companies, not `/api/getCompanies`. The noun in the URI represents the resource, helping consumers understand its type—e.g., use "companies" for a companies resource, not "products" or "orders."
+
+For hierarchical resources, follow this convention:  
+`/api/principalResource/{principalId}/dependentResource`.  
+For instance, since employees depend on a company, the route for employees should be:  
+`/api/companies/{companyId}/employees`.
+
+With this structure, you can proceed to define your `GET` requests.
+
+### Implementing business logic: Handling GET Requests
+
+
+##### Getting All Companies From the Database
+
+- add new class named `CompaniesController`
+- change the base route from `[Route("api/[controller]")]` to `[Route("api/companies")]`
+
+1. Now it is time to create the first action method to return all the companies from the database. Let’s create a definition for the `GetAllCompanies` method in the `ICompanyRepository` interface:
+   1. For this to work, we need to add the `Entities` project reference inside the `Contracts` project
+
+
+`Contracts\ICompanyRepository.cs`:
+```csharp
+using Entities.Models;
+namespace Contracts;
+
+public interface ICompanyRepository{
+    IEnumerable<Company> GetAllCompanies(bool trackChanges);
+}
+```
+
+
+2. Now, we can continue with the interface implementation in the `CompanyRepository` class:
+
+`Repository\CompanyRepository.cs`:
+```csharp
+using Contracts;
+using Entities.Models;
+namespace Repository;
+public class CompanyRepository : RepositoryBase<Company>, ICompanyRepository{
+    public CompanyRepository(RepositoryContext repositoryContext) : base(repositoryContext) { }
+
+    public IEnumerable<Company> GetAllCompanies(bool trackChanges) =>
+                FindAll(trackChanges).OrderBy(c => c.Name).ToList();
+}
+```
+
+As you can see, we are calling the `FindAll` method from the `RepositoryBase` class, ordering the result with the `OrderBy` method, and then executing the query with the `ToList` method.
+
+3. After the repository implementation, we have to implement a service layer. Let’s start with the `ICompanyService` interface modification:
+   1. Since the Company model resides in the `Entities` project, we have to add the Entities reference inside the `Service.Contracts` project.
+
+`Service.Contracts\ICompanyService.cs`
+```csharp
+using Entities.Models;
+namespace Service.Contracts;
+public interface ICompanyService{
+    IEnumerable<Company> GetAllCompanies(bool trackChanges);
+}
+```
+
+4. Then, let’s continue with the `CompanyService` modification:
+
+```csharp
+using Contracts;
+using Service.Contracts;
+using Entities.Models;
+namespace Service;
+internal sealed class CompanyService : ICompanyService
+{
+    private readonly IRepositoryManager _repository;
+    private readonly ILoggerManager _logger;
+    public CompanyService(IRepositoryManager repository, ILoggerManager logger) {
+        _repository = repository;
+        _logger = logger;
+    }
+
+    public IEnumerable<Company> GetAllCompanies(bool trackChanges){
+        try{
+            var companies = _repository.Company.GetAllCompanies(trackChanges);
+            return companies;
+        }
+        catch (Exception ex){
+            _logger.LogError($"Something went wrong in the {nameof(GetAllCompanies)} service method {ex} ");
+            throw;
+        }
+    }
+}
+```
+
+5. Finally, we have to return companies by using the `GetAllCompanies` method inside the Web API controller.
+
+```csharp
+using Service.Contracts;
+namespace Presentation.Controllers
+{
+    [Route("api/companies")]
+    [ApiController]
+    public class CompaniesController : ControllerBase {
+
+        private readonly IServiceManager _service;
+        public CompaniesController(IServiceManager service) => _service = service;
+        
+        [HttpGet]
+        public IActionResult GetCompanies() {
+            try{
+                var companies = _service.CompanyService.GetAllCompanies(trackChanges: false);
+                return Ok(companies);
+            }
+            catch{
+                return StatusCode(500, "Internal server error");
+            }
+        }
+    }
+}
+```
+
+The `IActionResult` interface supports using a variety of methods, which return not only the result but also the status codes. In this situation, the `OK` method returns all the companies and also the status code `200` — which stands for `OK`. If an exception occurs, we are going to return the internal server error with the status code `500`. Because there is no route attribute right above the action, the route for the `GetCompanies` action will be `api/companies` which is the route placed on top of our controller.
+
