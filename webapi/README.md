@@ -23,6 +23,8 @@
       - [Routing..](#routing)
     - [Implementing business logic: Handling GET Requests](#implementing-business-logic-handling-get-requests)
         - [Getting All Companies From the Database](#getting-all-companies-from-the-database)
+    - [DTO Classes vs. Entity Model Classes](#dto-classes-vs-entity-model-classes)
+    - [Using `AutoMapper` in ASP.NET Core](#using-automapper-in-aspnet-core)
 
 
 
@@ -1074,7 +1076,7 @@ namespace Presentation.Controllers
         public CompaniesController(IServiceManager service) => _service = service;
         
         [HttpGet]
-        public IActionResult GetCompanies() {
+        public ActionResult<IEnumerable<Company>> GetCompanies() {
             try{
                 var companies = _service.CompanyService.GetAllCompanies(trackChanges: false);
                 return Ok(companies);
@@ -1087,5 +1089,150 @@ namespace Presentation.Controllers
 }
 ```
 
-The `IActionResult` interface supports using a variety of methods, which return not only the result but also the status codes. In this situation, the `OK` method returns all the companies and also the status code `200` — which stands for `OK`. If an exception occurs, we are going to return the internal server error with the status code `500`. Because there is no route attribute right above the action, the route for the `GetCompanies` action will be `api/companies` which is the route placed on top of our controller.
+The `ActionResult` supports using a variety of methods, which return not only the result but also the status codes. In this situation, the `OK` method returns all the companies and also the status code `200` — which stands for `OK`. If an exception occurs, we are going to return the internal server error with the status code `500`. Because there is no route attribute right above the action, the route for the `GetCompanies` action will be `api/companies` which is the route placed on top of our controller.
 
+### DTO Classes vs. Entity Model Classes
+
+A data transfer object (**DTO**) is an object that we use to transport data between the client and server applications. It simplifies API responses, decouples them from database models, and preserves consistency even if models change, ensuring more maintainable code.
+
+- create a new project named `Shared` and then a new folder `DTO` with the `CompanyDto` record inside:
+
+```csharp
+namespace Shared.DTO;
+public record CompanyDto(Guid Id, string Name, string FullAddress);
+```
+
+**Records** are a good alternative to classes for DTOs because they are immutable by default and ideal for transferring data. 
+
+In our `DTO`, we have **removed** the `Employees` property and we are going to use the `FullAddress` property to concatenate the `Address` and `Country` properties from the `Company` class. Furthermore, we are not
+using validation attributes in this record, because we are going to use this record only to return a response to the client.
+
+Now,
+- **Add a reference** from the `Shared` project to the `Service.Contracts` project.  
+- **Remove the `Entities` reference** from `Service.Contracts`. Now, the `Service.Contracts` project should only reference the `Shared` project.
+- Then, we have to modify the `ICompanyService` interface:
+
+`Service.Contracts\ICompanyService.cs`:
+```csharp
+using Shared.DTO;
+namespace Service.Contracts;
+public interface ICompanyService{
+    IEnumerable<CompanyDto> GetAllCompanies(bool trackChanges);
+}
+```
+
+- And modify the `CompanyService` class:
+
+```csharp
+using Contracts;
+using Service.Contracts;
+using Shared.DTO;
+namespace Service;
+internal sealed class CompanyService : ICompanyService{
+    //....
+    public IEnumerable<CompanyDto> GetAllCompanies(bool trackChanges){
+            //..
+            var companies = _repository.Company.GetAllCompanies(trackChanges);
+            var companiesDto = companies.Select(c => new CompanyDto(c.Id, c.Name ?? "", 
+                                                string.Join("", c.Address, c.Country))).ToList();
+            return companiesDto;
+            //...
+    }
+}
+```
+
+- Finally, change `Company` to `CompanyDto` in controller:
+
+```csharp
+public ActionResult<IEnumerable<CompanyDto>> GetCompanies(){
+//..
+    var companies = _service.CompanyService.GetAllCompanies(trackChanges: false);
+    return Ok(companies);
+//..
+}
+```
+
+### Using `AutoMapper` in ASP.NET Core
+
+AutoMapper is a library that helps us with mapping objects in our applications. By using this library, we are going to remove the code for manual mapping — thus making the action readable and maintainable.
+
+- install AutoMapper - `AutoMapper`, choose the `Service` project
+- create a profile class, also in the main project, where we specify the source and destination objects for mapping:
+
+```csharp
+using AutoMapper;
+using Entities.Models;
+using Shared.DTO;
+
+namespace API;
+
+public class MappingProfile : Profile
+{
+    public MappingProfile()
+    {
+        CreateMap<Company, CompanyDto>()
+        .ForCtorParam("FullAddress", opt => opt.MapFrom(x => $"{x.Address} {x.Country}"));
+    }
+}     
+```
+
+- After installation, we are going to register this library in the `Program` class:
+
+```csharp
+builder.Services.AddAutoMapper(typeof(MappingProfile));
+```
+
+Now, we have to modify the `ServiceManager` class to enable DI in our service classes:
+
+```csharp
+public sealed class ServiceManager : IServiceManager{
+    //...
+    public ServiceManager(IRepositoryManager repositoryManager, ILoggerManager logger, IMapper mapper)
+    {
+        _companyService = new Lazy<ICompanyService>(() => new CompanyService(repositoryManager, logger, mapper));
+        _employeeService = new Lazy<IEmployeeService>(() => new EmployeeService(repositoryManager, logger, mapper));
+    }
+    //...
+}
+```
+
+Of course, now we have two errors regarding our service constructors. So we need to fix that in both `CompanyService` and `EmployeeService`
+classes:
+
+```csharp
+internal sealed class CompanyService : ICompanyService{
+    //..
+    public CompanyService(IRepositoryManager repository, ILoggerManager logger, IMapper mapper){
+        _mapper = mapper;
+        _repository = repository;
+        _logger = logger;
+    }
+}
+```
+
+Finally, we can modify the `GetAllCompanies` method in the `CompanyService` class:
+
+```csharp
+internal sealed class CompanyService : ICompanyService{
+    //..
+    public CompanyService(IRepositoryManager repository, ILoggerManager logger, IMapper mapper){
+        _mapper = mapper;
+        _repository = repository;
+        _logger = logger;
+    }
+    //...
+    public IEnumerable<CompanyDto> GetAllCompanies(bool trackChanges){
+        try{
+            var companies = _repository.Company.GetAllCompanies(trackChanges);
+            // var companiesDto = companies.Select(c => new CompanyDto(c.Id, c.Name ?? "",
+            //                                     string.Join("", c.Address, c.Country))).ToList();
+            var companiesDto = _mapper.Map<IEnumerable<CompanyDto>>(companies);
+            return companiesDto;
+        }
+        catch (Exception ex)   {
+            _logger.LogError($"Something went wrong in the {nameof(GetAllCompanies)} service method {ex} ");
+            throw;
+        }
+    }
+}
+```

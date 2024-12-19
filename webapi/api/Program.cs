@@ -2,6 +2,7 @@ using Scalar.AspNetCore;
 using api.Extensions.ServiceExtensions;
 using Microsoft.AspNetCore.HttpOverrides;
 using NLog;
+using API;
 
 var builder = WebApplication.CreateBuilder(args);
 var config = builder.Configuration;
@@ -14,7 +15,7 @@ builder.Services.ConfigureLoggerService();
 builder.Services.ConfigureSqlContext(config);
 builder.Services.ConfigureRepositoryManager();
 builder.Services.ConfigureServiceManager();
-
+builder.Services.AddAutoMapper(typeof(MappingProfile));
 // ....
 builder.Services.AddControllers()
                 .AddApplicationPart(typeof(Presentation.AssemblyReference).Assembly);

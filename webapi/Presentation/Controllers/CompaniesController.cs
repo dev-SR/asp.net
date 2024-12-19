@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Service.Contracts;
+using Shared.DTO;
 
 namespace Presentation.Controllers
 {
@@ -12,7 +13,7 @@ namespace Presentation.Controllers
         private readonly IServiceManager _service;
         public CompaniesController(IServiceManager service) => _service = service;
         [HttpGet]
-        public IActionResult GetCompanies()
+        public ActionResult<IEnumerable<CompanyDto>> GetCompanies()
         {
             try
             {
