@@ -30,6 +30,7 @@
       - [Handling Invalid Requests in a Service Layer](#handling-invalid-requests-in-a-service-layer)
     - [GET: Parent/Child Relationships in Web API](#get-parentchild-relationships-in-web-api)
       - [Getting a Single Employee for Company](#getting-a-single-employee-for-company)
+    - [POST: creating Resources](#post-creating-resources)
 
 
 
@@ -1623,5 +1624,103 @@ public IActionResult GetEmployeeForCompany(Guid companyId, Guid id)
 }
 ```
 
-
 We can test this action : `https://localhost:5001/api/companies/c9d4c053-49b6-410c-bc78-2d54a9991870/employees/86dba8c0-d178-41e7-938c-ed49778fb52a`
+
+### POST: creating Resources
+
+Firstly, let’s modify the decoration attribute for the `GetCompany` action in the Companies controller:
+
+```csharp
+[HttpGet("{id:guid}", Name = "CompanyById")]
+public ActionResult<CompanyDto> GetCompany(Guid id)
+```
+
+With this modification, we are setting the name for the action. This name will come in handy in the action method for creating a new company (- returning response `return CreatedAtRoute("CompanyById", new { id = createdCompany.Id }, createdCompany);`)
+
+We have a DTO class for the output (the GET methods), but right now we need the one for the input as well. So, let’s create a new record in the `Shared/DTO` folder:
+
+
+```csharp
+public record CompanyForCreationDto(string Name, string Address, string Country);
+```
+
+We can see that this DTO record is almost the same as the `Company` record but without the `Id` property. We don’t need that property when we create an entity.
+
+let’s continue by modifying the `ICompanyRepository` interface:
+
+```csharp
+public interface ICompanyRepository{
+    IEnumerable<Company> GetAllCompanies(bool trackChanges);
+    Company? GetCompany(Guid companyId, bool trackChanges);
+    void CreateCompany(Company company);//new
+}
+```
+
+Now implement that interface:
+
+```csharp
+public class CompanyRepository : RepositoryBase<Company>, ICompanyRepository{
+    //..
+    public void CreateCompany(Company company) => Create(company);
+}
+```
+
+Next, we want to modify the `ICompanyService` interface:
+
+```csharp
+public interface ICompanyService{
+    //..
+    CompanyDto CreateCompany(CompanyForCreationDto company);
+}
+```
+
+And of course, we have to implement this method in the `CompanyService` class:
+
+```csharp
+public CompanyDto CreateCompany(CompanyForCreationDto company){
+    var companyEntity = _mapper.Map<Company>(company);
+    _repository.Company.CreateCompany(companyEntity);
+    _repository.Save();
+    var companyToReturn = _mapper.Map<CompanyDto>(companyEntity);
+    return companyToReturn;
+}
+```
+
+We map the `CompanyForCreationDto` to the `Company` entity, save it to the database via the repository, and then map the saved entity back to a `CompanyDto` for the response. To achieve this, we create a mapping rule between `Company` and `CompanyForCreationDto` in the `MappingProfile` class.
+
+```csharp
+    public MappingProfile()
+    {
+        //...
+        CreateMap<Employee, EmployeeDto>();
+        CreateMap<CompanyForCreationDto, Company>();
+    }
+```
+
+Our POST action accepts a `CompanyForCreationDto` parameter, which is also used by the service method. However, the repository layer requires a `Company` object. To address this, we create a mapping rule to convert `CompanyForCreationDto` to `Company`.
+
+Last, let’s modify the controller, `CompaniesController.cs`:
+
+```csharp
+[HttpGet("{id:guid}", Name = "CompanyById")]
+public ActionResult<CompanyDto> GetCompany(Guid id){
+    //...
+}
+
+[HttpPost]
+public IActionResult CreateCompany([FromBody] CompanyForCreationDto company)
+{
+    if (company is null)
+        return BadRequest("CompanyForCreationDto object is null");
+    var createdCompany = _service.CompanyService.CreateCompany(company);
+    return CreatedAtRoute("CompanyById", new { id = createdCompany.Id }, createdCompany);
+}
+```
+
+`CreatedAtRoute` will return a status code `201`, which stands for Created. Also, it will populate the body of the response with the new company object as well as the Location attribute within the response header with the address to retrieve that company. We need to provide the name of the action, where we can retrieve the created entity.
+
+If we take a look at the headers part of our response, we are going to see a link to retrieve the created company:
+
+<p align="center">
+<img src="img/response-location.jpg" alt="response-location.jpg" width="600px"/>
+</p>

@@ -1,6 +1,7 @@
 
 using Microsoft.AspNetCore.Mvc;
 using Service.Contracts;
+using Shared.DTO;
 
 namespace Presentation.Controllers
 {
@@ -25,7 +26,8 @@ namespace Presentation.Controllers
             var employee = _service.EmployeeService.GetEmployee(companyId, id, trackChanges: false);
             return Ok(employee);
         }
+
+
+
     }
-
-
 }
