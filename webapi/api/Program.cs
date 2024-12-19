@@ -16,6 +16,7 @@ builder.Services.ConfigureSqlContext(config);
 builder.Services.ConfigureRepositoryManager();
 builder.Services.ConfigureServiceManager();
 builder.Services.AddAutoMapper(typeof(MappingProfile));
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 // ....
 builder.Services.AddControllers()
                 .AddApplicationPart(typeof(Presentation.AssemblyReference).Assembly);
@@ -39,7 +40,9 @@ if (app.Environment.IsDevelopment())
         options.WithModels(false);
     });
 }
-else { app.UseHsts(); }
+app.UseExceptionHandler(opt => { });
+if (app.Environment.IsProduction())
+    app.UseHsts();
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();

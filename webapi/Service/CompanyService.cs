@@ -1,6 +1,7 @@
 using System;
 using AutoMapper;
 using Contracts;
+using Entities.Exceptions;
 using Service.Contracts;
 using Shared.DTO;
 namespace Service;
@@ -20,18 +21,22 @@ internal sealed class CompanyService : ICompanyService
 
     public IEnumerable<CompanyDto> GetAllCompanies(bool trackChanges)
     {
-        try
-        {
-            var companies = _repository.Company.GetAllCompanies(trackChanges);
-            // var companiesDto = companies.Select(c => new CompanyDto(c.Id, c.Name ?? "",
-            //                                     string.Join("", c.Address, c.Country))).ToList();
-            var companiesDto = _mapper.Map<IEnumerable<CompanyDto>>(companies);
-            return companiesDto;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Something went wrong in the {nameof(GetAllCompanies)} service method {ex} ");
-            throw;
-        }
+        var companies = _repository.Company.GetAllCompanies(trackChanges);
+        // var companiesDto = companies.Select(c => new CompanyDto(c.Id, c.Name ?? "",
+        //                                     string.Join("", c.Address, c.Country))).ToList();
+        var companiesDto = _mapper.Map<IEnumerable<CompanyDto>>(companies);
+        return companiesDto;
+
+    }
+
+    public CompanyDto? GetCompany(Guid id, bool trackChanges)
+    {
+        var company = _repository.Company.GetCompany(id, trackChanges);
+        if (company is null)
+            throw new CompanyNotFoundException(id);
+
+
+        var companyDto = _mapper.Map<CompanyDto>(company);
+        return companyDto;
     }
 }

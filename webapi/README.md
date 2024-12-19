@@ -25,6 +25,10 @@
         - [Getting All Companies From the Database](#getting-all-companies-from-the-database)
     - [DTO Classes vs. Entity Model Classes](#dto-classes-vs-entity-model-classes)
     - [Using `AutoMapper` in ASP.NET Core](#using-automapper-in-aspnet-core)
+    - [Global Error Handling](#global-error-handling)
+    - [GET: a Single Resource](#get-a-single-resource)
+      - [Handling Invalid Requests in a Service Layer](#handling-invalid-requests-in-a-service-layer)
+    - [GET: Parent/Child Relationships in Web API](#get-parentchild-relationships-in-web-api)
 
 
 
@@ -1176,6 +1180,10 @@ public class MappingProfile : Profile
 }     
 ```
 
+In the constructor, we are using the `CreateMap` method where we specify the source object and the destination object to map to.Because we have the `FullAddress` property in our DTO record, which contains both the `Address` and the `Country` from the model class, we have to
+specify additional mapping rules with the `ForCtorParam` method.
+
+
 - After installation, we are going to register this library in the `Program` class:
 
 ```csharp
@@ -1234,5 +1242,242 @@ internal sealed class CompanyService : ICompanyService{
             throw;
         }
     }
+}
+```
+
+### Global Error Handling
+
+In .NET 8, we can use this new interface to globally handle exceptions in our project. 
+
+To start, let’s create a new `GlobalExceptionHandler` class inside the main project:
+
+```csharp
+using System.Net;
+using Contracts;
+using Entities.ErrorModel;
+using Entities.Exceptions;
+using Microsoft.AspNetCore.Diagnostics;
+
+namespace API;
+
+public class GlobalExceptionHandler : IExceptionHandler
+{
+
+    private readonly ILoggerManager _logger;
+    public GlobalExceptionHandler(ILoggerManager logger)
+    {
+        _logger = logger;
+    }
+    public async ValueTask<bool> TryHandleAsync(HttpContext httpContext,
+                                                Exception exception,
+                                                CancellationToken cancellationToken)
+    {
+        httpContext.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+        httpContext.Response.ContentType = "application/json";
+        var contextFeature = httpContext.Features.Get<IExceptionHandlerFeature>();
+        if (contextFeature != null)
+        {
+            _logger.LogError($"Something went wrong: {exception.Message}");
+            await httpContext.Response.WriteAsync(new ErrorDetails()
+            {
+                StatusCode = httpContext.Response.StatusCode,
+                Message = "Internal Server Error.",
+            }.ToString());
+        }
+        return true;
+    }
+}
+```
+
+With this in place, we can register this class as a service, and register a handler middleware in the `Program` class:
+
+
+```csharp
+builder.Services.AddAutoMapper(typeof(Program));
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();//new
+
+var app = builder.Build();
+app.UseExceptionHandler(opt => { });//new
+```
+
+Now we can remove the `try-catch` block from the `GetAllCompanies` service method:
+
+```csharp
+public IEnumerable<CompanyDto> GetAllCompanies(bool trackChanges)
+{
+    var companies = _repository.Company.GetAllCompanies(trackChanges);
+    var companiesDto = _mapper.Map<IEnumerable<CompanyDto>>(companies);
+    return companiesDto;
+}
+```
+
+And from our `GetCompanies` action:
+
+```csharp
+[HttpGet]
+public IActionResult GetCompanies()
+{
+    var companies = _service.CompanyService.GetAllCompanies(trackChanges: false);
+    return Ok(companies);
+}
+```
+And there we go. Our methods are much cleaner now. More importantly, we can reuse this functionality to write more readable methods and actions in the future.
+
+
+To inspect this functionality, let’s add the following line to the `GetCompanies` action, just to simulate an error:
+
+```csharp
+[HttpGet]
+public IActionResult GetCompanies()
+{
+    throw new Exception("Exception");//new
+    var companies = _service.CompanyService.GetAllCompanies(trackChanges: false);
+    return Ok(companies);
+}
+```
+
+
+### GET: a Single Resource
+
+Let’s start by modifying the `ICompanyRepository` interface:
+
+```csharp
+public interface ICompanyRepository{
+    IEnumerable<Company> GetAllCompanies(bool trackChanges);
+    Company? GetCompany(Guid companyId, bool trackChanges);
+}
+```
+
+Then, we are going to implement this interface in the `CompanyRepository.cs` file: 
+
+```csharp
+public Company? GetCompany(Guid companyId, bool trackChanges) =>
+                FindByCondition(c => c.Id.Equals(companyId), trackChanges).SingleOrDefault();
+```
+
+Then, we have to modify the `ICompanyService` interface:
+
+```csharp
+public interface ICompanyService{
+    IEnumerable<CompanyDto> GetAllCompanies(bool trackChanges);
+    CompanyDto? GetCompany(Guid companyId, bool trackChanges);
+}
+```
+
+And of course, we have to implement this interface in the `CompanyService` class:
+
+```csharp
+public CompanyDto? GetCompany(Guid id, bool trackChanges){
+    var company = _repository.Company.GetCompany(id, trackChanges);
+    //Check if the company is null
+    
+    var companyDto = _mapper.Map<CompanyDto>(company);
+    return companyDto;
+}
+```
+see the comment about the `null` checks, which we are going to solve just in a minute.
+
+Finally, let’s change the CompanyController class:
+
+```csharp
+[HttpGet("{id:guid}")]
+public ActionResult<CompanyDto> GetCompany(Guid id)
+{
+    var company = _service.CompanyService.GetCompany(id, trackChanges: false);
+    return Ok(company);
+}
+```
+
+
+#### Handling Invalid Requests in a Service Layer
+
+the result returned from the repository could be `null`, and this is something we have to handle. We want to return the `NotFound` response to the client but without involving our controller’s actions. We are going to keep them nice and clean as they already are. So, what we are going to do is to create custom exceptions that we can call from the service methods and interrupt the flow.
+
+That said, let’s start with a new `Exceptions` folder creation inside the `Entities` project. Since, in this case, we are going to create a not found response, let’s create a new `NotFoundException` class inside that folder: 
+
+```csharp
+namespace Entities.Exceptions;
+public abstract class NotFoundException : Exception {
+    protected NotFoundException(string message) : base(message) { }
+}
+```
+
+This is an abstract class, which will be a base class for all the individual not found exception classes. Since in
+our current case, we are handling the situation where we can’t find the company in the database, we are going to create a new `CompanyNotFoundException` class in the same `Exceptions` folder:
+
+```csharp
+namespace Entities.Exceptions;
+
+public sealed class CompanyNotFoundException : NotFoundException
+{
+    public CompanyNotFoundException(Guid companyId) : base($"The company with id: {companyId} doesn't exist in the database.") { }
+}
+```
+
+Right after that, we can remove the comment in the `GetCompany` method and throw this exception:
+
+
+```csharp
+    public CompanyDto? GetCompany(Guid id, bool trackChanges)
+    {
+        var company = _repository.Company.GetCompany(id, trackChanges);
+        if (company is null)
+            throw new CompanyNotFoundException(id);
+
+        var companyDto = _mapper.Map<CompanyDto>(company);
+        return companyDto;
+    }
+```
+
+
+Finally, we have to modify our error middleware because we don’t want to return the `500` error message to our clients for every custom error we throw from the service layer.
+
+So, let’s modify the `GlobalExceptionHandler` class in the main project:
+
+```csharp
+    public async ValueTask<bool> TryHandleAsync(HttpContext httpContext,
+                                                Exception exception,
+                                                CancellationToken cancellationToken)
+    {
+        httpContext.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+        httpContext.Response.ContentType = "application/json";
+        var contextFeature = httpContext.Features.Get<IExceptionHandlerFeature>();
+        if (contextFeature != null)
+        {   //new
+            httpContext.Response.StatusCode = contextFeature.Error switch
+            {
+                NotFoundException => StatusCodes.Status404NotFound,
+                _ => StatusCodes.Status500InternalServerError
+            };
+            //new
+            _logger.LogError($"Something went wrong: {exception.Message}");
+            await httpContext.Response.WriteAsync(new ErrorDetails()
+            {
+                StatusCode = httpContext.Response.StatusCode,
+                Message = contextFeature.Error.Message,//new
+            }.ToString());
+        }
+        return true;
+    }
+```
+
+We remove the hardcoded `StatusCode` setup and add the part where we populate it based on the type of exception we throw in our service layer.
+
+
+### GET: Parent/Child Relationships in Web API
+
+Up until now, we have been working only with the company, which is a parent (principal) entity in our API. But for each company, we have a related employee (dependent entity). Every employee must be related to a certain company and we are going to create our URIs in that manner.
+
+
+That said, let’s create a new controller in the `Presentation` project and name it `EmployeesController`:
+
+
+```csharp
+[Route("api/companies/{companyId}/employees")]
+[ApiController]
+public class EmployeesController : ControllerBase
+{
+    private readonly IServiceManager _service;
+    public EmployeesController(IServiceManager service) => _service = service;
 }
 ```
