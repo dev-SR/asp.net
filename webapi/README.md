@@ -29,6 +29,7 @@
     - [GET: a Single Resource](#get-a-single-resource)
       - [Handling Invalid Requests in a Service Layer](#handling-invalid-requests-in-a-service-layer)
     - [GET: Parent/Child Relationships in Web API](#get-parentchild-relationships-in-web-api)
+      - [Getting a Single Employee for Company](#getting-a-single-employee-for-company)
 
 
 
@@ -1481,3 +1482,147 @@ public class EmployeesController : ControllerBase
     public EmployeesController(IServiceManager service) => _service = service;
 }
 ```
+
+To get an employee or employees from the database, we have to specify the `companyId` parameter, and that is something all actions will have in common. For that reason, we have specified this route as our root route.
+
+Before we create an action to fetch all the employees per company, we have to modify the `IEmployeeRepository` interface:
+
+```csharp
+public interface IEmployeeRepository{
+    IEnumerable<Employee> GetEmployees(Guid companyId, bool trackChanges);
+}
+```
+
+After interface modification, we are going to modify the `EmployeeRepository` class:
+
+```csharp
+    public IEnumerable<Employee> GetEmployees(Guid companyId, bool trackChanges) =>
+        FindByCondition(e => e.CompanyId.Equals(companyId), trackChanges)
+        .OrderBy(e => e.Name).ToList();
+```
+
+Then, before we start adding code to the service layer, we are going to create a new DTO. Let’s name it EmployeeDto and add it to the `Shared/DTO` folder:
+
+```csharp
+public record EmployeeDto(Guid Id, string Name, int Age, string Position);
+```
+
+Since we want to return this DTO to the client, we have to create a mapping rule inside the `MappingProfile` class:
+
+```csharp
+public class MappingProfile : Profile{
+    public MappingProfile()    {
+        ///....
+        CreateMap<Employee, EmployeeDto>();
+    }
+}
+```
+
+Now, we can modify the `IEmployeeService` interface:
+
+
+```csharp
+public interface IEmployeeService{
+    IEnumerable<EmployeeDto> GetEmployees(Guid companyId, bool trackChanges);
+}
+
+```
+
+And of course, we have to implement this interface in the `EmployeeService` class:
+
+```csharp
+public IEnumerable<EmployeeDto> GetEmployees(Guid companyId, bool trackChanges)
+{
+    var company = _repository.Company.GetCompany(companyId, trackChanges);
+    if (company is null)
+        throw new CompanyNotFoundException(companyId);
+    var employeesFromDb = _repository.Employee.GetEmployees(companyId, trackChanges);
+    var employeesDto = _mapper.Map<IEnumerable<EmployeeDto>>(employeesFromDb);
+    return employeesDto;
+}
+```
+
+Finally, let’s modify the Employees controller:
+
+```csharp
+    [HttpGet]
+    public IActionResult GetEmployeesForCompany(Guid companyId)
+    {
+        var employees = _service.EmployeeService.GetEmployees(companyId, trackChanges: false);
+        return Ok(employees);
+    }
+```
+
+
+That done, we can send a request with a valid companyId:
+`https://localhost:5001/api/companies/c9d4c053-49b6-410c-bc78-2d54a9991870/employees`
+
+
+#### Getting a Single Employee for Company
+
+So, as we did in previous sections, let’s start with the `IEmployeeRepository` interface modification:
+
+```csharp
+public interface IEmployeeRepository
+{
+    IEnumerable<Employee> GetEmployees(Guid companyId, bool trackChanges);
+    Employee? GetEmployee(Guid companyId, Guid id, bool trackChanges);
+}
+```
+
+Now, let’s implement this method in the `EmployeeRepository` class:
+
+```csharp
+public Employee? GetEmployee(Guid companyId, Guid id, bool trackChanges) =>
+    FindByCondition(e => e.CompanyId.Equals(companyId) && e.Id.Equals(id), trackChanges)
+    .SingleOrDefault();
+```
+
+Next, let’s add another exception class in the `Entities/Exceptions` folder:
+
+```csharp
+public class EmployeeNotFoundException : NotFoundException
+{
+    public EmployeeNotFoundException(Guid employeeId) : base($"Employee with id: {employeeId} doesn't exist in the database.") { }
+}
+```
+
+To continue, we have to modify the `IEmployeeService` interface:
+
+```csharp
+public interface IEmployeeService
+{
+    IEnumerable<EmployeeDto> GetEmployees(Guid companyId, bool trackChanges);
+    EmployeeDto? GetEmployee(Guid companyId, Guid id, bool trackChanges);
+}
+```
+
+And implement this new method in the EmployeeService class:
+
+```csharp
+public EmployeeDto GetEmployee(Guid companyId, Guid id, bool trackChanges)
+{
+    var company = _repository.Company.GetCompany(companyId, trackChanges);
+    if (company is null)
+        throw new CompanyNotFoundException(companyId);
+    var employeeDb = _repository.Employee.GetEmployee(companyId, id, trackChanges);
+    if (employeeDb is null)
+        throw new EmployeeNotFoundException(id);
+    var employee = _mapper.Map<EmployeeDto>(employeeDb);
+    return employee;
+}
+```
+
+Finally, let’s modify the `EmployeeController` class:
+
+```csharp
+[HttpGet("{id:guid}")]
+public IActionResult GetEmployeeForCompany(Guid companyId, Guid id)
+{
+    var employee = _service.EmployeeService.GetEmployee(companyId, id, trackChanges: false);
+    return Ok(employee);
+}
+```
+
+
+We can test this action : `https://localhost:5001/api/companies/c9d4c053-49b6-410c-bc78-2d54a9991870/employees/86dba8c0-d178-41e7-938c-ed49778fb52a`
