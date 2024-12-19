@@ -21,7 +21,7 @@
     - [Adding a Service Layer](#adding-a-service-layer)
     - [Controllers and Routing in WEB API](#controllers-and-routing-in-web-api)
       - [Routing..](#routing)
-    - [Implementing business logic: Handling GET Requests](#implementing-business-logic-handling-get-requests)
+    - [GET: All - implementing business logic](#get-all---implementing-business-logic)
         - [Getting All Companies From the Database](#getting-all-companies-from-the-database)
     - [DTO Classes vs. Entity Model Classes](#dto-classes-vs-entity-model-classes)
     - [Using `AutoMapper` in ASP.NET Core](#using-automapper-in-aspnet-core)
@@ -986,8 +986,7 @@ For instance, since employees depend on a company, the route for employees shoul
 
 With this structure, you can proceed to define your `GET` requests.
 
-### Implementing business logic: Handling GET Requests
-
+### GET: All - implementing business logic
 
 ##### Getting All Companies From the Database
 
