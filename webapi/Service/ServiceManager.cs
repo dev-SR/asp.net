@@ -1,6 +1,7 @@
 using System;
 using AutoMapper;
 using Contracts;
+using Logger.Contract;
 using Service.Contracts;
 
 namespace Service;

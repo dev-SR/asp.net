@@ -1,5 +1,6 @@
 
 using Contracts;
+using Logger.Contract;
 using LoggerService;
 using Microsoft.EntityFrameworkCore;
 using Repository;
@@ -57,7 +58,7 @@ public static class ServiceExtensions
             }
             catch (Exception e)
             {
-                Console.WriteLine("Error applying migration");
+                throw new Exception($"Migration ERROR {e.Message}");
             }
         }
     }

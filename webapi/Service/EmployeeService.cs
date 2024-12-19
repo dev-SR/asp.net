@@ -2,6 +2,7 @@ using System;
 using AutoMapper;
 using Contracts;
 using Entities.Exceptions;
+using Logger.Contract;
 using Service.Contracts;
 using Shared.DTO;
 

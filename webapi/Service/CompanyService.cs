@@ -3,6 +3,7 @@ using AutoMapper;
 using Contracts;
 using Entities.Exceptions;
 using Entities.Models;
+using Logger.Contract;
 using Service.Contracts;
 using Shared.DTO;
 namespace Service;

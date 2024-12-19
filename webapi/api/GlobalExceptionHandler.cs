@@ -3,6 +3,7 @@ using System.Net;
 using Contracts;
 using Entities.ErrorModel;
 using Entities.Exceptions;
+using Logger.Contract;
 using Microsoft.AspNetCore.Diagnostics;
 
 namespace API;
@@ -30,6 +31,8 @@ public class GlobalExceptionHandler : IExceptionHandler
                 _ => StatusCodes.Status500InternalServerError
             };
             _logger.LogError($"Something went wrong: {exception.Message}");
+            _logger.LogError($"Code: {httpContext.Response.StatusCode}");
+
             await httpContext.Response.WriteAsync(new ErrorDetails()
             {
                 StatusCode = httpContext.Response.StatusCode,

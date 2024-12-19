@@ -1,5 +1,5 @@
 using System;
-using Contracts;
+using Logger.Contract;
 using NLog;
 
 namespace LoggerService;

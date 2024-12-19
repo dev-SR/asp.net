@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Presentation", "Presentatio
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Shared", "Shared\Shared.csproj", "{C3DC6FBE-335C-4246-8282-5B8AE5339D49}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Logger.Contract", "Logger.Contract\Logger.Contract.csproj", "{1FBF3FB5-0E87-4A92-A155-E10BACFCB155}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -63,6 +65,10 @@ Global
 		{C3DC6FBE-335C-4246-8282-5B8AE5339D49}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C3DC6FBE-335C-4246-8282-5B8AE5339D49}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C3DC6FBE-335C-4246-8282-5B8AE5339D49}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1FBF3FB5-0E87-4A92-A155-E10BACFCB155}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1FBF3FB5-0E87-4A92-A155-E10BACFCB155}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1FBF3FB5-0E87-4A92-A155-E10BACFCB155}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1FBF3FB5-0E87-4A92-A155-E10BACFCB155}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

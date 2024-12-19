@@ -11,7 +11,7 @@ using Repository;
 namespace API.Migrations
 {
     [DbContext(typeof(RepositoryContext))]
-    [Migration("20241218124828_firstMigration")]
+    [Migration("20241219195452_firstMigration")]
     partial class firstMigration
     {
         /// <inheritdoc />
