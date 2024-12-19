@@ -65,6 +65,20 @@ public class ErrorController : ControllerBase
     [HttpPost("creationValidation")]
     public IActionResult POST([FromBody] Company data)
     {
+        // re-run validation
+        data.Address = "";
+        ModelState.ClearValidationState(nameof(Company));
+        if (!TryValidateModel(data, nameof(Company)))
+            return BadRequest(new ErrorDetails()
+            {
+                StatusCode = 400,
+                Message = "Bad Request",
+                Errors = ModelState.ToDictionary(
+                                kvp => kvp.Key,
+                                kvp => kvp.Value?.Errors.Select(e => e.ErrorMessage).ToList() ?? new List<string>()
+                            )
+            });
+
         return Ok(data);
     }
 
