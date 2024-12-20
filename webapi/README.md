@@ -36,6 +36,10 @@ EmployeeService# REST API: ASP.NET CORE mvc webpi
     - [Model Binding in API](#model-binding-in-api)
   - [DELETE: Requests](#delete-requests)
     - [Deleting a Parent Resource with its Children](#deleting-a-parent-resource-with-its-children)
+  - [PUT Requests](#put-requests)
+    - [Updating a Child Resource](#updating-a-child-resource)
+      - [About Using `Save()` instead of `Update` Method from the RepositoryBase](#about-using-save-instead-of-update-method-from-the-repositorybase)
+    - [Inserting Child Resources while Updating a Parent Resource](#inserting-child-resources-while-updating-a-parent-resource)
 
 
 
@@ -1987,3 +1991,158 @@ public IActionResult DeleteCompany(Guid id)
     return NoContent();
 }
 ```
+
+### PUT Requests
+
+We are going to update a child resource first and then we are going to show you how to execute insert while updating a parent
+resource.
+
+#### Updating a Child Resource
+
+In the previous sections, we first changed our interface, then the repository/service classes, and finally the controller. But for the update, this doesn’t have to be the case.
+
+The first thing we are going to do is to create another DTO record for update purposes:
+
+```csharp
+public record EmployeeForUpdateDto(string Name, int Age, string Position);
+```
+
+Because we have an additional DTO record, we require an additional mapping rule:
+
+```csharp
+CreateMap<EmployeeForUpdateDto, Employee>();
+```
+
+After adding the mapping rule, we can modify the `IEmployeeService` interface:
+
+```csharp
+public interface IEmployeeService{
+    //...
+    void UpdateEmployeeForCompany(Guid companyId, Guid id,
+                                    EmployeeForUpdateDto employeeForUpdate,
+                                    bool compTrackChanges,
+                                    bool empTrackChanges);
+}
+```
+
+We are declaring a method that contains both id parameters – one for the company and one for employee, the `employeeForUpdate` object sent from the client, and two track changes parameters, again, one for the company and one for the employee. **We are doing that because we won't track changes while fetching the company entity, but we will track changes while fetching the employee.**
+
+That said, let’s modify the `EmployeeService` class:
+
+```csharp
+    public void UpdateEmployeeForCompany(Guid companyId, Guid id,
+                                            EmployeeForUpdateDto employeeForUpdate,
+                                            bool compTrackChanges,
+                                            bool empTrackChanges)
+    {
+        var company = _repository.Company.GetCompany(companyId, compTrackChanges);
+        if (company is null)
+            throw new CompanyNotFoundException(companyId);
+
+        var employeeEntity = _repository.Employee.GetEmployee(companyId, id, empTrackChanges);
+        if (employeeEntity is null)
+            throw new EmployeeNotFoundException(id);
+
+        _mapper.Map(employeeForUpdate, employeeEntity);
+        _repository.Save();
+    }
+```
+
+As we’ve already said: the `trackChanges` parameter will be set to `true` for the `employeeEntity`. That’s because we want EF Core to track
+changes on this entity. This means that as soon as we change any property in this entity, EF Core will set the state of that entity to
+`Modified`.
+
+As you can see, (`_mapper.Map(employeeForUpdate, employeeEntity);`), we are mapping from the `employeeForUpdate` object (we will change just the age property in a request) to the `employeeEntity`  — thus changing the state of the `employeeEntity` object to Modified.
+
+Because our entity has a modified state, it is enough to call the Save method without any additional update actions. As soon as we call the
+`Save` method, our entity is going to be updated in the database. 
+
+Now, when we have all of these, let’s modify the `EmployeesController`:
+
+```csharp
+[HttpPut("{id:guid}")]
+public IActionResult UpdateEmployeeForCompany(Guid companyId, Guid id, [FromBody] EmployeeForUpdateDto employee)
+{
+    _service.EmployeeService.UpdateEmployeeForCompany(companyId, id, employee,
+    compTrackChanges: false, empTrackChanges: true);
+    return NoContent();
+}
+```
+
+##### About Using `Save()` instead of `Update` Method from the RepositoryBase
+
+Right now, you might be asking: “Why do we have the `Update` method in the `RepositoryBase` class if we are not using it?”
+
+The `Update` method in the `RepositoryBase` class is essential for handling disconnected updates, where different context objects are used for fetching and updating, or when an object with an Id is provided by a client. In such cases, EF Core is informed to track changes and set the entity's state to modified. One note though, using this method updates all properties in the database, even if only one property changes.
+
+#### Inserting Child Resources while Updating a Parent Resource
+
+While updating a parent resource, we can create child resources as well without too much effort. EF Core helps us a lot with that process. Let’s see how.
+
+The first thing we are going to do is to create a DTO record for update:
+
+```csharp
+public record CompanyForUpdateDto(string Name, string Address, string Country, 
+                                IEnumerable<EmployeeForCreationDto> Employees);
+```
+
+After this, let’s create a new mapping rule:
+
+
+```csharp
+CreateMap<CompanyForUpdateDto, Company>();
+```
+
+Then, let’s move on to the interface modification:
+
+
+```csharp
+public interface ICompanyService
+{
+    //...
+    void UpdateCompany(Guid companyId, CompanyForUpdateDto companyForUpdate, bool trackChanges);
+}
+``` 
+
+And of course, the service class modification:
+
+```csharp
+public void UpdateCompany(Guid companyId, CompanyForUpdateDto companyForUpdate, bool trackChanges)
+{
+    var companyEntity = _repository.Company.GetCompany(companyId, trackChanges);
+    if (companyEntity is null)
+        throw new CompanyNotFoundException(companyId);
+    
+    _mapper.Map(companyForUpdate, companyEntity);
+    _repository.Save();
+}
+```
+
+Right now, we can modify our controller:
+
+```csharp
+[HttpPut("{id:guid}")]
+public IActionResult UpdateCompany(Guid id, [FromBody] CompanyForUpdateDto company)
+{
+    _service.CompanyService.UpdateCompany(id, company, trackChanges: true);
+    return NoContent();
+}
+```
+
+Let’s test this action: We modify the name of the company and attach an employee as well.
+
+```json
+{
+  "name": "Electronics Solutions Ltd",
+  "address": "Dhaka",
+  "country": "BD",
+  "employees": [
+      {
+            "name": "Jhon",
+            "age":29,
+            "position":"Admin"
+      }
+    ]
+}
+```
+

@@ -67,6 +67,7 @@ if (app.Environment.IsDevelopment())
         options.WithTheme(ScalarTheme.DeepSpace);
         options.WithDefaultHttpClient(ScalarTarget.JavaScript, ScalarClient.Axios);
         options.WithModels(false);
+        options.OperationSorter = OperationSorter.Method;
     });
 }
 app.UseExceptionHandler(opt => { });
