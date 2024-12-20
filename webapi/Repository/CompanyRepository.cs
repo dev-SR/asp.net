@@ -16,5 +16,6 @@ public class CompanyRepository : RepositoryBase<Company>, ICompanyRepository
                 FindByCondition(c => c.Id.Equals(companyId), trackChanges).SingleOrDefault();
 
     public void CreateCompany(Company company) => Create(company);
+    public void DeleteCompany(Company company) => Delete(company);
 
 }

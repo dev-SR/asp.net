@@ -12,19 +12,23 @@ public abstract class NotFoundException : Exception
     protected NotFoundException(string message) : base(message) { }
 }
 
+
+public abstract class BadRequestException : Exception
+{
+    protected BadRequestException(string message) : base(message) { }
+}
+
 public class ThrowNotFound : NotFoundException
 {
     public ThrowNotFound() : base("Not found")
     {
     }
 }
-public class ErrorDetails
+public class MyBadRequestException : BadRequestException
 {
-    public int StatusCode { get; set; }
-    public string? Message { get; set; }
-    public Dictionary<string, List<string>> Errors { get; set; } = new Dictionary<string, List<string>>();
-
-    public override string ToString() => JsonSerializer.Serialize(this);
+    public MyBadRequestException() : base("MyBadRequestException")
+    {
+    }
 }
 
 
@@ -53,7 +57,7 @@ public class ErrorController : ControllerBase
     [HttpGet("badRequest")]
     public ActionResult BadRequestMethod()
     {
-        return BadRequest(new ErrorDetails() { StatusCode = 400, Message = "Bad Request" });
+        throw new MyBadRequestException();
     }
     [HttpGet("badRequest/{id}")]
     public ActionResult BadRequestByIdMethod([FromRoute] Guid id)
@@ -67,17 +71,17 @@ public class ErrorController : ControllerBase
     {
         // re-run validation
         data.Address = "";
-        ModelState.ClearValidationState(nameof(Company));
-        if (!TryValidateModel(data, nameof(Company)))
-            return BadRequest(new ErrorDetails()
-            {
-                StatusCode = 400,
-                Message = "Bad Request",
-                Errors = ModelState.ToDictionary(
-                                kvp => kvp.Key,
-                                kvp => kvp.Value?.Errors.Select(e => e.ErrorMessage).ToList() ?? new List<string>()
-                            )
-            });
+        // ModelState.ClearValidationState(nameof(Company));
+        // if (!TryValidateModel(data, nameof(Company)))
+        //     return BadRequest(new ErrorDetails()
+        //     {
+        //         StatusCode = 400,
+        //         Message = "Bad Request",
+        //         Errors = ModelState.ToDictionary(
+        //                         kvp => kvp.Key,
+        //                         kvp => kvp.Value?.Errors.Select(e => e.ErrorMessage).ToList() ?? new List<string>()
+        //                     )
+        //     });
 
         return Ok(data);
     }

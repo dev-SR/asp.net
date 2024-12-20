@@ -1,36 +1,41 @@
-# REST API: ASP.NET CORE mvc webpi
+EmployeeService# REST API: ASP.NET CORE mvc webpi
 
-- [REST API: ASP.NET CORE mvc webpi](#rest-api-aspnet-core-mvc-webpi)
-  - [Building and running project with dotnet cli](#building-and-running-project-with-dotnet-cli)
-  - [API DOC setup](#api-doc-setup)
-    - [Adding Scaler APi Doc](#adding-scaler-api-doc)
-  - [LoggerService](#loggerservice)
-    - [Creating the ILoggerManager Interface and Installing NLog](#creating-the-iloggermanager-interface-and-installing-nlog)
-    - [Implementing the Interface and NIog.Config File](#implementing-the-interface-and-niogconfig-file)
-    - [Configuring Logger Service for Logging Messages](#configuring-logger-service-for-logging-messages)
-    - [Logger Service Testing](#logger-service-testing)
-  - [Onion architecture](#onion-architecture)
-    - [Creating Models](#creating-models)
-    - [Context Class and the Database Connection](#context-class-and-the-database-connection)
-    - [Data seeding...](#data-seeding)
-    - [Repository Pattern Logic](#repository-pattern-logic)
-    - [Simplified Repository Pattern Logic](#simplified-repository-pattern-logic)
-      - [Repository User Interfaces and Classes](#repository-user-interfaces-and-classes)
-      - [Creating a Repository Manager](#creating-a-repository-manager)
-    - [Registering RepositoryContext at a Runtime](#registering-repositorycontext-at-a-runtime)
-    - [Adding a Service Layer](#adding-a-service-layer)
-    - [Controllers and Routing in WEB API](#controllers-and-routing-in-web-api)
-      - [Routing..](#routing)
-    - [GET: All - implementing business logic](#get-all---implementing-business-logic)
-        - [Getting All Companies From the Database](#getting-all-companies-from-the-database)
-    - [DTO Classes vs. Entity Model Classes](#dto-classes-vs-entity-model-classes)
-    - [Using `AutoMapper` in ASP.NET Core](#using-automapper-in-aspnet-core)
-    - [Global Error Handling](#global-error-handling)
-    - [GET: a Single Resource](#get-a-single-resource)
-      - [Handling Invalid Requests in a Service Layer](#handling-invalid-requests-in-a-service-layer)
-    - [GET: Parent/Child Relationships in Web API](#get-parentchild-relationships-in-web-api)
-      - [Getting a Single Employee for Company](#getting-a-single-employee-for-company)
-    - [POST: creating Resources](#post-creating-resources)
+- [Building and running project with dotnet cli](#building-and-running-project-with-dotnet-cli)
+- [API DOC setup](#api-doc-setup)
+  - [Adding Scaler APi Doc](#adding-scaler-api-doc)
+- [LoggerService](#loggerservice)
+  - [Creating the ILoggerManager Interface and Installing NLog](#creating-the-iloggermanager-interface-and-installing-nlog)
+  - [Implementing the Interface and NIog.Config File](#implementing-the-interface-and-niogconfig-file)
+  - [Configuring Logger Service for Logging Messages](#configuring-logger-service-for-logging-messages)
+  - [Logger Service Testing](#logger-service-testing)
+- [Onion architecture](#onion-architecture)
+  - [Creating Models](#creating-models)
+  - [Context Class and the Database Connection](#context-class-and-the-database-connection)
+  - [Data seeding...](#data-seeding)
+  - [Repository Pattern Logic](#repository-pattern-logic)
+  - [Simplified Repository Pattern Logic](#simplified-repository-pattern-logic)
+    - [Repository User Interfaces and Classes](#repository-user-interfaces-and-classes)
+    - [Creating a Repository Manager](#creating-a-repository-manager)
+  - [Registering RepositoryContext at a Runtime](#registering-repositorycontext-at-a-runtime)
+  - [Adding a Service Layer](#adding-a-service-layer)
+  - [Controllers and Routing in WEB API](#controllers-and-routing-in-web-api)
+    - [Routing..](#routing)
+  - [GET: All - implementing business logic](#get-all---implementing-business-logic)
+      - [Getting All Companies From the Database](#getting-all-companies-from-the-database)
+  - [DTO Classes vs. Entity Model Classes](#dto-classes-vs-entity-model-classes)
+  - [Using `AutoMapper` in ASP.NET Core](#using-automapper-in-aspnet-core)
+  - [Global Error Handling](#global-error-handling)
+  - [GET: a Single Resource](#get-a-single-resource)
+    - [Handling Invalid Requests in a Service Layer](#handling-invalid-requests-in-a-service-layer)
+  - [GET: Parent/Child Relationships in Web API](#get-parentchild-relationships-in-web-api)
+    - [Getting a Single Employee for Company](#getting-a-single-employee-for-company)
+  - [POST: creating Resources](#post-creating-resources)
+    - [Creating a Child Resource](#creating-a-child-resource)
+    - [Creating Children Resources Together with a Parent](#creating-children-resources-together-with-a-parent)
+    - [Creating a Collection of Resources](#creating-a-collection-of-resources)
+    - [Model Binding in API](#model-binding-in-api)
+  - [DELETE: Requests](#delete-requests)
+    - [Deleting a Parent Resource with its Children](#deleting-a-parent-resource-with-its-children)
 
 
 
@@ -1724,3 +1729,261 @@ If we take a look at the headers part of our response, we are going to see a lin
 <p align="center">
 <img src="img/response-location.jpg" alt="response-location.jpg" width="600px"/>
 </p>
+
+#### Creating a Child Resource
+
+For employee creation, we will follow the same approach as for creating the company by defining the required DTO object.
+
+Let’s create a new record in the `Shared/DTO` folder:
+```csharp
+public record EmployeeForCreationDto(string Name, int Age, string Position);
+```
+
+We exclude the `Id` property since it will be generated server-side and omit `CompanyId` as it's passed via the route:  `[Route("api/companies/{companyId}/employees")]`.
+
+The next step is to modify the `IEmployeeRepository` interface:
+
+```csharp
+public interface IEmployeeRepository{
+    IEnumerable<Employee> GetEmployees(Guid companyId, bool trackChanges);
+    Employee? GetEmployee(Guid companyId, Guid id, bool trackChanges);
+    void CreateEmployeeForCompany(Guid companyId, Employee employee);//new
+}
+```
+
+Of course, we have to implement this interface:
+
+```csharp
+public class EmployeeRepository : RepositoryBase<Employee>, IEmployeeRepository{
+    //..
+    public void CreateEmployeeForCompany(Guid companyId, Employee employee){
+        employee.CompanyId = companyId;
+        Create(employee);
+    }
+}
+```
+
+Since the action accepts an employee DTO and sends it to a service method, which then requires an employee object for the repository method, we need to add a mapping rule in the `MappingProfile` class.
+
+```csharp
+    public MappingProfile()
+    {
+        //..
+        CreateMap<Employee, EmployeeDto>();
+        CreateMap<CompanyForCreationDto, Company>();
+        CreateMap<EmployeeForCreationDto, Employee>();//new
+    }
+```
+
+The next thing we have to do is `IEmployeeService` modification:
+
+```csharp
+public interface IEmployeeService
+{
+    IEnumerable<EmployeeDto> GetEmployees(Guid companyId, bool trackChanges);
+    EmployeeDto? GetEmployee(Guid companyId, Guid id, bool trackChanges);
+    EmployeeDto CreateEmployeeForCompany(Guid companyId, EmployeeForCreationDto employeeForCreation, bool trackChanges);//new
+}
+``` 
+
+And implement this new method in `EmployeeService`:
+
+```csharp
+public EmployeeDto CreateEmployeeForCompany(Guid companyId,
+                                            EmployeeForCreationDto employeeForCreation,
+                                            bool trackChanges)
+{
+    var company = _repository.Company.GetCompany(companyId, trackChanges);
+    if (company is null)
+        throw new CompanyNotFoundException(companyId);
+
+    var employeeEntity = _mapper.Map<Employee>(employeeForCreation);
+
+    _repository.Employee.CreateEmployeeForCompany(companyId, employeeEntity);
+    _repository.Save();
+
+    var employeeToReturn = _mapper.Map<EmployeeDto>(employeeEntity);
+
+    return employeeToReturn;
+}
+```
+
+
+Finally, let’s modify the `EmployeesController` class:
+
+```csharp
+[HttpPost]
+public IActionResult CreateEmployeeForCompany(Guid companyId, [FromBody] EmployeeForCreationDto employee)
+{
+    if (employee is null)
+        return BadRequest("EmployeeForCreationDto object is null");
+
+    var createdEmployee = _service.EmployeeService.CreateEmployeeForCompany(companyId, employee, trackChanges: false);
+    return CreatedAtRoute("GetEmployeeForCompany", new { companyId, id = createdEmployee.Id }, createdEmployee);
+}
+```
+
+For this to work, we have to modify the HTTP attribute above the `GetEmployeeForCompany` action:
+
+```csharp
+[HttpGet("{id:guid}", Name = "GetEmployeeForCompany")]
+```
+
+Let’s give this a try: `https://localhost:5001/api/companies/3d490a70-94ce-4d15-9494-5248280c2ce3/employees`
+
+#### Creating Children Resources Together with a Parent
+
+There are situations where we want to create a parent resource with its children. Rather than using multiple requests for every single child, we want to do this in the same request with the parent resource.
+
+The first thing we are going to do is extend the `CompanyForCreationDto` class:
+
+```csharp
+// public record CompanyForCreationDto(string Name, string Address, string Country);
+public record CompanyForCreationDto(string Name, string Address, string Country,
+                                    IEnumerable<EmployeeForCreationDto> Employees);
+```
+
+We are not going to change the action logic inside the controller nor the repository/service logic; everything is great there. That’s all. This is because `Employee` entity has property `public ICollection<Employee>? Employees { get; set; }`
+
+
+Let’s test it:
+
+```json
+{
+  "name": "Electronics Solutions Ltd",
+  "address": "Dhaka",
+  "country": "BD",
+  "employees": [
+      {
+            "name": "Joan Dane",
+            "age":29,
+            "position":"Manager"
+      },
+      {
+            "name": "Martin Geil",
+            "age":29,
+            "position":"Administrative"
+      }
+    ]
+}
+```
+
+#### Creating a Collection of Resources
+#### Model Binding in API
+
+### DELETE: Requests
+
+Let’s start by modifying the `IEmployeeRepository` interface:
+
+```csharp
+public interface IEmployeeRepository
+{
+    //..
+    void DeleteEmployee(Employee employee);//new
+}
+```
+
+
+The next step for us is to modify the `EmployeeRepository` class: 
+
+```csharp
+public class EmployeeRepository : RepositoryBase<Employee>, IEmployeeRepository
+{
+    //..
+    public void DeleteEmployee(Employee employee) => Delete(employee);
+}
+```
+
+After that, we have to modify the `IEmployeeService` interface:
+
+```csharp
+    public void DeleteEmployeeForCompany(Guid companyId, Guid id, bool trackChanges)
+    {
+        var company = _repository.Company.GetCompany(companyId, trackChanges);
+        if (company is null)
+            throw new CompanyNotFoundException(companyId);
+        var employeeForCompany = _repository.Employee.GetEmployee(companyId, id, trackChanges);
+        if (employeeForCompany is null)
+            throw new EmployeeNotFoundException(id);
+        _repository.Employee.DeleteEmployee(employeeForCompany);
+        _repository.Save();
+    }
+```
+
+Finally, we can add a delete action to the controller class:
+
+```csharp
+[HttpDelete("{id:guid}")]
+public IActionResult DeleteEmployeeForCompany(Guid companyId, Guid id)
+{
+    _service.EmployeeService.DeleteEmployeeForCompany(companyId, id, trackChanges:
+    false);
+    return NoContent();
+}
+```
+
+#### Deleting a Parent Resource with its Children
+
+With Entity Framework Core, this action is pretty simple. With the basic configuration, **cascade deleting** is enabled by default (We can confirm that from the migration file - `api\Migrations\RepositoryContextModelSnapshot.cs`), which means deleting a parent resource will automatically delete all of its children:
+
+
+So, all we have to do is to create a logic for deleting the parent resource.
+Well, let’s do that following the same steps as in a previous example:
+
+```csharp
+public interface ICompanyRepository
+{
+    IEnumerable<Company> GetAllCompanies(bool trackChanges);
+    Company? GetCompany(Guid companyId, bool trackChanges);
+    void CreateCompany(Company company);
+    void DeleteCompany(Company company);//new
+}
+
+Then let’s modify the repository class:
+
+```csharp
+public class CompanyRepository : RepositoryBase<Company>, ICompanyRepository
+{
+    //..
+    public void DeleteCompany(Company company) => Delete(company);
+}
+```
+
+Then we have to modify the service interface:
+
+```csharp
+public interface ICompanyService
+{
+    IEnumerable<CompanyDto> GetAllCompanies(bool trackChanges);
+    CompanyDto? GetCompany(Guid companyId, bool trackChanges);
+    CompanyDto CreateCompany(CompanyForCreationDto company);
+    void DeleteCompany(Guid companyId, bool trackChanges);
+}
+```
+
+And the service class:
+
+```csharp
+internal sealed class CompanyService : ICompanyService
+{
+    public void DeleteCompany(Guid companyId, bool trackChanges)
+    {
+        var company = _repository.Company.GetCompany(companyId, trackChanges);
+        if (company is null)
+            throw new CompanyNotFoundException(companyId);
+        _repository.Company.DeleteCompany(company);
+        _repository.Save();
+    }
+}
+```
+
+Finally, let’s modify our controller:
+
+```csharp
+[HttpDelete("{id:guid}")]
+public IActionResult DeleteCompany(Guid id)
+{
+    _service.CompanyService.DeleteCompany(id, trackChanges: false);
+    return NoContent();
+}
+```
