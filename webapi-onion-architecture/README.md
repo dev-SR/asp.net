@@ -1,18 +1,6 @@
-EmployeeService# REST API: ASP.NET CORE mvc webpi
+# ASP.NET CORE mvc webpi | Onion architecture
 
-- [Building and running project with dotnet cli](#building-and-running-project-with-dotnet-cli)
-- [API DOC setup](#api-doc-setup)
-  - [Adding Scaler APi Doc](#adding-scaler-api-doc)
-- [LoggerService](#loggerservice)
-  - [Creating the ILoggerManager Interface and Installing NLog](#creating-the-iloggermanager-interface-and-installing-nlog)
-  - [Implementing the Interface and NIog.Config File](#implementing-the-interface-and-niogconfig-file)
-  - [Configuring Logger Service for Logging Messages](#configuring-logger-service-for-logging-messages)
-  - [Logger Service Testing](#logger-service-testing)
-- [Onion architecture](#onion-architecture)
-  - [Creating Models](#creating-models)
-  - [Context Class and the Database Connection](#context-class-and-the-database-connection)
-  - [Data seeding...](#data-seeding)
-  - [Repository Pattern Logic](#repository-pattern-logic)
+- [ASP.NET CORE mvc webpi | Onion architecture](#aspnet-core-mvc-webpi--onion-architecture)
   - [Simplified Repository Pattern Logic](#simplified-repository-pattern-logic)
     - [Repository User Interfaces and Classes](#repository-user-interfaces-and-classes)
     - [Creating a Repository Manager](#creating-a-repository-manager)
@@ -43,473 +31,7 @@ EmployeeService# REST API: ASP.NET CORE mvc webpi
 
 
 
-## Building and running project with dotnet cli
-
-- Step 1: Create a New Solution  
-  
-```bash
- dotnet new sln -n WebAPISolution
-```
-
-- Step 2: Create api project 
-
-```bash
-dotnet new webapi --use-controllers -n API -o api
-```
-
-`--use-controllers` required for creating mvc webapi with .NET 9.0
-
-- Step 3: Add the project to the Solution  
-```bash
-dotnet sln WebAPISolution.sln add api/MyConsoleApp.csproj
-# or just:
-dotnet sln WebAPISolution.sln add api/
-```
-
-After running the above commands, your directory structure will look like this:  
-
-```
-Proj/
-├── WebAPISolution.sln
-├── api/
-│   ├── API.csproj
-│   ├── Program.cs
-│   ├── ....
-```
-
--  Step 4: Restore and Build the Solution  
-
-Restore dependencies and build the solution using the following commands:  
-```bash
-dotnet restore
-# or
-dotnet restore WebAPISolution.sln
-dotnet build
-```
-
-- Step 5: Run the Console Application  
-
-**Navigate to the `api` directory** and execute the following command:  
-
-```bash
-cd api
-dotnet watch run
-```
-
-## API DOC setup
-
-> Swagger dropped in .NET 9: What are the alternatives?
-
-- [https://youtu.be/fJWEXqGxbJg?si=RvCYIW4MSkEIIHFc](https://youtu.be/fJWEXqGxbJg?si=RvCYIW4MSkEIIHFc)
- 
-### Adding Scaler APi Doc 
-
-- [https://www.nuget.org/packages/Scalar.AspNetCore](https://www.nuget.org/packages/Scalar.AspNetCore)
-
-1. Install the package
-
-```bash
-dotnet add package Scalar.AspNetCore --version 1.2.61
-```
-
-2. Add the using directive at `Program.cs`
-
-
-```csharp
-using Scalar.AspNetCore;
-```
-
-3. Configure your application
-   
-Add the following to `Program.cs` based on your OpenAPI generator:
-
-For .NET 9 using `Microsoft.AspNetCore.OpenApi`:
-
-
-```csharp
-builder.Services.AddOpenApi();
-
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-    app.MapScalarApiReference();//new
-}
-```
-
-That’s it! 🎉 With the default settings, you can now access the Scalar API reference at `/scalar/v1` in your browser, where v1 is the default document name.
-
-Change Configurations:
-
-```csharp
-    app.MapScalarApiReference(options =>
-    {
-        options.WithTitle("First APi");
-        options.WithTheme(ScalarTheme.DeepSpace);
-        options.WithDefaultHttpClient(ScalarTarget.JavaScript, ScalarClient.Axios);
-        options.WithModels(false);
-        //...
-    });
-```
-
-## LoggerService
-
-- Create class lib project called `Contracts`.
-- Create `LoggerService`, we are going to use to write our logger logic in.
-- In the `LoggerService` project, add a reference to the `Contracts` project
-- Then, in the main project - `API` , add a reference to `LoggerService`. Since `Contracts` is referenced through `LoggerService`, it will also be available in the main project.
-
-### Creating the ILoggerManager Interface and Installing NLog
-
-- create an interface named `ILoggerManager` inside the Contracts project
-- install the `NLog.Extensions.Logging`  in our `LoggerService` project.
-
-### Implementing the Interface and NIog.Config File
-
-- In the LoggerService project, we are going to create a new class: `LoggerManager`
-
-```csharp
-using System;
-using Contracts;
-using NLog;
-
-namespace LoggerService;
-
-public class LoggerManager : ILoggerManager
-{
-    private static ILogger logger = LogManager.GetCurrentClassLogger();
-    public LoggerManager()
-    {
-    }
-    public void LogDebug(string message) => logger.Debug(message);
-    public void LogError(string message) => logger.Error(message);
-    public void LogInfo(string message) => logger.Info(message);
-    public void LogWarn(string message) => logger.Warn(message);
-}
-```
-
-
-NLog needs to have information about where to put log files on the file system, what the name of these files will be, and what is the minimum level of logging that we want.
-
-
-We are going to define all these constants in a text file **in the main project** and name it `nlog.config`
-
-```xml
-<?xml version="1.0" encoding="utf-8" ?>
-<nlog   xmlns="http://www.nlog-project.org/schemas/NLog.xsd"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        autoReload="true"
-        internalLogLevel="Trace"
-        internalLogFile=".\internal_logs\internallog.txt">
-    <targets>
-        <target name="logfile" xsi:type="File" fileName=".\logs\${shortdate}_logfile.txt" layout="${longdate} ${level:uppercase=true} ${message}"/>
-    </targets>
-    <rules>
-        <logger name="*" minlevel="Debug" writeTo="logfile" />
-    </rules>
-</nlog>
-```
-
-### Configuring Logger Service for Logging Messages
-
-Setting up the configuration for a logger service is quite easy. First, we need to update the `Program` class and include the path to the configuration file for the NLog configuration:
-
-```csharp
-using NLog;
-//...
-var builder = WebApplication.CreateBuilder(args);
-
-var nlogConfigFilePath = string.Concat(Directory.GetCurrentDirectory(), "\\nlog.config");
-LogManager.Setup().LoadConfigurationFromFile(nlogConfigFilePath);
-
-builder.Services.ConfigureCors();
-//...
-```
-
-
-add the logger service inside the .NET Core’s IOC container. So, let’s add a new method in the `ServiceExtensions` class:
-
-`api\Extensions\ServiceExtensions.cs`
-
-```csharp
-public static void ConfigureLoggerService(this IServiceCollection services) =>
-        services.AddSingleton<ILoggerManager, LoggerManager>();
-```
-
-And after that, we need to modify the Program class to include our newly created extension method:
-
-`Program.cs`
-
-```csharp
-// Add services to the container.
-builder.Services.ConfigureCors();
-builder.Services.ConfigureLoggerService();
-```
-
-
-### Logger Service Testing
-
-To test our logger service, we are going to use the default `WeatherForecastController`. You can find it in the main project in the `Controllers` folder. It comes with the ASP.NET Core Web API template.
-
-```csharp
-using Contracts;
-using Microsoft.AspNetCore.Mvc;
-
-namespace API.Controllers;
-
-[ApiController]
-[Route("[controller]")]
-public class WeatherForecastController : ControllerBase
-{
-
-    private readonly ILoggerManager _logger;
-    public WeatherForecastController(ILoggerManager logger)
-    {
-        _logger = logger;
-    }
-
-    [HttpGet(Name = "GetWeatherForecast")]
-    public IEnumerable<WeatherForecast> Get()
-    {
-        _logger.LogInfo("Here is info message from our values controller.");
-        _logger.LogDebug("Here is debug message from our values controller.");
-        _logger.LogWarn("Here is warn message from our values controller.");
-        _logger.LogError("Here is an error message from our values controller.");
-
-        return ...;
-    }
-}
-```
-
-
-
-## Onion architecture
-
-### Creating Models
-
-- Create a new **Class Library project** named `Entities`.
-- Inside it, we are going to create a **folder** named `Models`
-- In the `Models` folder we are going to create two classes - i.e. `Company` and `Employee`
-
-### Context Class and the Database Connection
-
-- create another new **Class Library project** named `Repository`.
-- add the `Repository` project’s reference into the main project - `API`.
-
-`API\API.csproj`
-
-```jsx
-<ItemGroup>
-    <ProjectReference Include="..\Repository\Repository.csproj" />
-</ItemGroup>
-```
-
-- add project reference of `Entities` in the `Repository` project as follows:
-
-`Repository\Repository.csproj`
-
-```jsx
-  <ItemGroup>
-    <ProjectReference Include="..\Entities\Entities.csproj" />
-  </ItemGroup>
-```
-
-- Then, navigate to the root of the `Repository` project and create the `RepositoryContext` class:
-
-```csharp
-using System;
-using Entities.Models;
-using Microsoft.EntityFrameworkCore;
-
-namespace Repository;
-
-public class RepositoryContext : DbContext
-{
-    public RepositoryContext(DbContextOptions options) : base(options) { }
-    public DbSet<Company>? Companies { get; set; }
-    public DbSet<Employee>? Employees { get; set; }
-}
-```
-
-- After the class modification, let’s open the `appsettings.json` file, in the main project `API`, and add the connection string:
-
-```json
-{
- "ConnectionStrings": {
-    "Database": "sqlite",
-    "DefaultConnection": "Data Source=SQLLiteDatabase.db"
-  }
-}
-```
-
-
-- let’s create a new `ContextFactory` folder in the main project  `API` and inside it a new `RepositoryContextFactory` class
-
- Since our `RepositoryContext` class is in a `Repository` project and **not in the main one - API**, this class will help our application create a derived `DbContext` instance **during the design time** which will help us with our **migrations**:
-
-`api\ContextFactory\RepositoryContextFactory.cs`
-
-```csharp
-using System;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Design;
-using Repository;
-namespace API.ContextFactory;
-public class RepositoryContextFactory : IDesignTimeDbContextFactory<RepositoryContext>
-{
-    public RepositoryContext CreateDbContext(string[] args)
-    {
-        var configuration = new ConfigurationBuilder()
-                                .SetBasePath(Directory.GetCurrentDirectory())
-                                .AddJsonFile("appsettings.json")
-                                .Build();
-        var builder = new DbContextOptionsBuilder<RepositoryContext>();
-        var database = configuration.GetConnectionString("Database");
-        if (database == "sqlite")
-        {
-            builder.UseSqlite(configuration.GetConnectionString("DefaultConnection"),
-                                b => b.MigrationsAssembly("API"));//puts migration in API project
-        }
-        else
-        {
-            // builder.useX(configuration.GetConnectionString("DefaultConnection"),
-            //   b => b.MigrationsAssembly("API"));//puts migration in API project
-        }
-        /* 
-                            cd api 
-                            dotnet ef migrations add firstMigration
-                            dotnet ef database update
-        */
-        return new RepositoryContext(builder.Options);
-    }
-}
-```
-
-because migration assembly is not in our main project, but in the Repository project. So, we’ve used `b => b.MigrationsAssembly("API")` for the migration assembly.
-
-
-- Before Executing migrations install Entity EntityFrameworkCore packages as follows:
-
-`api\API.csproj`:
-
-`Repository\Repository.csproj`:
-
-```jsx
-  <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.0" />
-  </ItemGroup>
-```
-
-```jsx
-  <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="9.0.0">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-  </ItemGroup>
-```
-
-- Executing migrations:
-
-```bash
-dotnet tool list --global
-dotnet tool install --global dotnet-ef
-cd api 
-dotnet ef migrations add firstMigration
-```
-
-With this command, we are creating migration files and we can find them in the `Migrations` folder in our main project:
-
-
-```
-Proj/
-├── WebAPISolution.sln
-├── api/
-│   ├── API.csproj
-│   ├── Migrations
-│       ├── xxxxxxxxxxxx_firstMigration.cs
-```
-
-
-### Data seeding...
-
-Once we have the database and tables created, we should populate them with some initial data. To do that, we are going to create another folder in the `Repository` project called `Configuration` and add the Configuration classes:
-
-
-```csharp
-using System;
-using Entities.Models;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata.Builders;
-namespace Repository.Configuration;
-public class CompanyConfiguration : IEntityTypeConfiguration<Company>{
-    public void Configure(EntityTypeBuilder<Company> builder){
-        builder.HasData(
-                new Company
-                {
-                    Id = new Guid("c9d4c053-49b6-410c-bc78-2d54a9991870"),
-                    Name = "IT_Solutions Ltd",
-                    Address = "583 Wall Dr. Gwynn Oak, MD 21207",
-                    Country = "USA"
-                },
-                new Company
-                {
-                    Id = new Guid("3d490a70-94ce-4d15-9494-5248280c2ce3"),
-                    Name = "Admin_Solutions Ltd",
-                    Address = "312 Forest Avenue, BF 923",
-                    Country = "USA"
-                }
-        );
-    }
-}
-```
-
-To invoke this configuration, we have to change the `RepositoryContext` class:
-
-```csharp
-using System;
-using Entities.Models;
-using Microsoft.EntityFrameworkCore;
-using Repository.Configuration;
-
-namespace Repository;
-
-public class RepositoryContext : DbContext
-{
-    public RepositoryContext(DbContextOptions options) : base(options) { }
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        modelBuilder.ApplyConfiguration(new CompanyConfiguration());
-        modelBuilder.ApplyConfiguration(new EmployeeConfiguration());
-    }
-    public DbSet<Company>? Companies { get; set; }
-    public DbSet<Employee>? Employees { get; set; }
-}
-```
-
-Now, we can create and apply another migration to seed these data to the database:
-
-```bash
-cd api 
-dotnet ef migrations add InitialData
-dotnet ef database update
-```
-
-This will transfer all the data from our configuration files to the respective
-tables.
-
-Removing migration:
-
-```bash
-cd api
-dotnet ef database drop
-dotnet ef migrations remove -f
-```
-
-
-### Repository Pattern Logic
-
-### Simplified Repository Pattern Logic
+## Simplified Repository Pattern Logic
 
 The **Repository Pattern** involves creating a **generic repository** to handle basic CRUD operations. This allows you to reuse these methods across different repository classes in your project. 
 
@@ -584,7 +106,7 @@ Generic type `T`. This type T gives even more reusability to the RepositoryBase 
 Moreover, we can see the `trackChanges` parameter. We are going to use it to improve our read-only query performance. When it’s set to false, we attach the AsNoTracking method to our query to inform EF Core that it
 doesn’t need to track changes for the required entities. This greatly improves the speed of a query.
 
-#### Repository User Interfaces and Classes
+### Repository User Interfaces and Classes
 
 Now that we have the `RepositoryBase` class, let’s create the user classes that will inherit this abstract class.
 By inheriting from the `RepositoryBase` class, they will have access to all the methods from it.
@@ -636,7 +158,7 @@ public class EmployeeRepository : RepositoryBase<Employee>, IEmployeeRepository
 After these steps, we are finished creating the repository and repository user classes. 
 > But there are still more things to do.
 
-#### Creating a Repository Manager
+### Creating a Repository Manager
 
 APIs often return data from multiple resources, such as all companies and employees over 30. Managing this with multiple repository classes can become complex, what if we need the combined logic of five or even more different classes?
 
@@ -716,7 +238,7 @@ This ensures the `RepositoryManager` is available as a scoped service throughout
 Excellent - The repository layer is prepared and ready to be used to fetch data from the database.
 
 
-### Registering RepositoryContext at a Runtime
+## Registering RepositoryContext at a Runtime
 
 With the `RepositoryContextFactory` class, which implements the `IDesignTimeDbContextFactory` interface, we have registered our RepositoryContext class at **design time**. **This helps us find the RepositoryContext class in another project while executing migrations.**
 
@@ -754,7 +276,7 @@ builder.Services.ConfigureSqlContext(builder.Configuration);
 ```
 
 
-### Adding a Service Layer
+## Adding a Service Layer
 
 The Service layer sits right above the Domain layer (the Contracts project is the part of the Domain layer), which means that it has a reference to the Domain layer. The Service layer will be split into two projects, `Service.Contracts` and `Service`.
 
@@ -886,7 +408,7 @@ builder.Services.ConfigureServiceManager();
 //..
 ```
 
-### Controllers and Routing in WEB API
+## Controllers and Routing in WEB API
 
 Another separate project for Controller logic also?
 
@@ -944,7 +466,7 @@ public class TestController : ControllerBase{
 public record Person(string Name, int Age);
 ```
 
-#### Routing..
+### Routing..
 
 There are two ways to implement routing in the project:
 
@@ -996,9 +518,9 @@ For instance, since employees depend on a company, the route for employees shoul
 
 With this structure, you can proceed to define your `GET` requests.
 
-### GET: All - implementing business logic
+## GET: All - implementing business logic
 
-##### Getting All Companies From the Database
+#### Getting All Companies From the Database
 
 - add new class named `CompaniesController`
 - change the base route from `[Route("api/[controller]")]` to `[Route("api/companies")]`
@@ -1105,7 +627,7 @@ namespace Presentation.Controllers
 
 The `ActionResult` supports using a variety of methods, which return not only the result but also the status codes. In this situation, the `OK` method returns all the companies and also the status code `200` — which stands for `OK`. If an exception occurs, we are going to return the internal server error with the status code `500`. Because there is no route attribute right above the action, the route for the `GetCompanies` action will be `api/companies` which is the route placed on top of our controller.
 
-### DTO Classes vs. Entity Model Classes
+## DTO Classes vs. Entity Model Classes
 
 A data transfer object (**DTO**) is an object that we use to transport data between the client and server applications. It simplifies API responses, decouples them from database models, and preserves consistency even if models change, ensuring more maintainable code.
 
@@ -1166,7 +688,7 @@ public ActionResult<IEnumerable<CompanyDto>> GetCompanies(){
 }
 ```
 
-### Using `AutoMapper` in ASP.NET Core
+## Using `AutoMapper` in ASP.NET Core
 
 AutoMapper is a library that helps us with mapping objects in our applications. By using this library, we are going to remove the code for manual mapping — thus making the action readable and maintainable.
 
@@ -1255,7 +777,7 @@ internal sealed class CompanyService : ICompanyService{
 }
 ```
 
-### Global Error Handling
+## Global Error Handling
 
 In .NET 8, we can use this new interface to globally handle exceptions in our project. 
 
@@ -1347,7 +869,7 @@ public IActionResult GetCompanies()
 ```
 
 
-### GET: a Single Resource
+## GET: a Single Resource
 
 Let’s start by modifying the `ICompanyRepository` interface:
 
@@ -1399,7 +921,7 @@ public ActionResult<CompanyDto> GetCompany(Guid id)
 ```
 
 
-#### Handling Invalid Requests in a Service Layer
+### Handling Invalid Requests in a Service Layer
 
 the result returned from the repository could be `null`, and this is something we have to handle. We want to return the `NotFound` response to the client but without involving our controller’s actions. We are going to keep them nice and clean as they already are. So, what we are going to do is to create custom exceptions that we can call from the service methods and interrupt the flow.
 
@@ -1474,7 +996,7 @@ So, let’s modify the `GlobalExceptionHandler` class in the main project:
 We remove the hardcoded `StatusCode` setup and add the part where we populate it based on the type of exception we throw in our service layer.
 
 
-### GET: Parent/Child Relationships in Web API
+## GET: Parent/Child Relationships in Web API
 
 Up until now, we have been working only with the company, which is a parent (principal) entity in our API. But for each company, we have a related employee (dependent entity). Every employee must be related to a certain company and we are going to create our URIs in that manner.
 
@@ -1567,7 +1089,7 @@ That done, we can send a request with a valid companyId:
 `https://localhost:5001/api/companies/c9d4c053-49b6-410c-bc78-2d54a9991870/employees`
 
 
-#### Getting a Single Employee for Company
+### Getting a Single Employee for Company
 
 So, as we did in previous sections, let’s start with the `IEmployeeRepository` interface modification:
 
@@ -1635,7 +1157,7 @@ public IActionResult GetEmployeeForCompany(Guid companyId, Guid id)
 
 We can test this action : `https://localhost:5001/api/companies/c9d4c053-49b6-410c-bc78-2d54a9991870/employees/86dba8c0-d178-41e7-938c-ed49778fb52a`
 
-### POST: creating Resources
+## POST: creating Resources
 
 Firstly, let’s modify the decoration attribute for the `GetCompany` action in the Companies controller:
 
@@ -1734,7 +1256,7 @@ If we take a look at the headers part of our response, we are going to see a lin
 <img src="img/response-location.jpg" alt="response-location.jpg" width="600px"/>
 </p>
 
-#### Creating a Child Resource
+### Creating a Child Resource
 
 For employee creation, we will follow the same approach as for creating the company by defining the required DTO object.
 
@@ -1835,7 +1357,7 @@ For this to work, we have to modify the HTTP attribute above the `GetEmployeeFor
 
 Let’s give this a try: `https://localhost:5001/api/companies/3d490a70-94ce-4d15-9494-5248280c2ce3/employees`
 
-#### Creating Children Resources Together with a Parent
+### Creating Children Resources Together with a Parent
 
 There are situations where we want to create a parent resource with its children. Rather than using multiple requests for every single child, we want to do this in the same request with the parent resource.
 
@@ -1872,10 +1394,10 @@ Let’s test it:
 }
 ```
 
-#### Creating a Collection of Resources
-#### Model Binding in API
+### Creating a Collection of Resources
+### Model Binding in API
 
-### DELETE: Requests
+## DELETE: Requests
 
 Let’s start by modifying the `IEmployeeRepository` interface:
 
@@ -1926,7 +1448,7 @@ public IActionResult DeleteEmployeeForCompany(Guid companyId, Guid id)
 }
 ```
 
-#### Deleting a Parent Resource with its Children
+### Deleting a Parent Resource with its Children
 
 With Entity Framework Core, this action is pretty simple. With the basic configuration, **cascade deleting** is enabled by default (We can confirm that from the migration file - `api\Migrations\RepositoryContextModelSnapshot.cs`), which means deleting a parent resource will automatically delete all of its children:
 
@@ -1992,12 +1514,12 @@ public IActionResult DeleteCompany(Guid id)
 }
 ```
 
-### PUT Requests
+## PUT Requests
 
 We are going to update a child resource first and then we are going to show you how to execute insert while updating a parent
 resource.
 
-#### Updating a Child Resource
+### Updating a Child Resource
 
 In the previous sections, we first changed our interface, then the repository/service classes, and finally the controller. But for the update, this doesn’t have to be the case.
 
@@ -2069,13 +1591,13 @@ public IActionResult UpdateEmployeeForCompany(Guid companyId, Guid id, [FromBody
 }
 ```
 
-##### About Using `Save()` instead of `Update` Method from the RepositoryBase
+#### About Using `Save()` instead of `Update` Method from the RepositoryBase
 
 Right now, you might be asking: “Why do we have the `Update` method in the `RepositoryBase` class if we are not using it?”
 
 The `Update` method in the `RepositoryBase` class is essential for handling disconnected updates, where different context objects are used for fetching and updating, or when an object with an Id is provided by a client. In such cases, EF Core is informed to track changes and set the entity's state to modified. One note though, using this method updates all properties in the database, even if only one property changes.
 
-#### Inserting Child Resources while Updating a Parent Resource
+### Inserting Child Resources while Updating a Parent Resource
 
 While updating a parent resource, we can create child resources as well without too much effort. EF Core helps us a lot with that process. Let’s see how.
 

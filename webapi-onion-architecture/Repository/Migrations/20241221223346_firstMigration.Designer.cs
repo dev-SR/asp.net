@@ -8,10 +8,10 @@ using Repository;
 
 #nullable disable
 
-namespace API.Migrations
+namespace Repository.Migrations
 {
     [DbContext(typeof(RepositoryContext))]
-    [Migration("20241219195452_firstMigration")]
+    [Migration("20241221223346_firstMigration")]
     partial class firstMigration
     {
         /// <inheritdoc />

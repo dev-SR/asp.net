@@ -5,22 +5,39 @@ using NLog;
 using API;
 using Microsoft.AspNetCore.Mvc;
 using Entities.ErrorModel;
+using DotNetEnv;
+using Repository;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-var config = builder.Configuration;
+// var config = builder.Configuration;
+// Load environment variables from the .env file
+Env.Load();
+
+builder.Services.AddOpenApi();
+
+// setting up nlog
 var nlogConfigFilePath = string.Concat(Directory.GetCurrentDirectory(), "\\nlog.config");
 LogManager.Setup().LoadConfigurationFromFile(nlogConfigFilePath);
-
-// Add services to the container.
-builder.Services.ConfigureCors();
-builder.Services.ConfigureLoggerService();
-builder.Services.ConfigureSqlContext(config);
-builder.Services.ConfigureRepositoryManager();
-builder.Services.ConfigureServiceManager();
+// configure autoMapper
 builder.Services.AddAutoMapper(typeof(MappingProfile));
+// handle global exception
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+// enable cors
+builder.Services.ConfigureCors();
+// add logger service
+builder.Services.ConfigureLoggerService();
+// add db context
+builder.Services.ConfigureSqlContext();
+// apply migrations
+// builder.Services.ApplyMigration();
+// register repository manager dependency
+builder.Services.ConfigureRepositoryManager();
+// register service manager dependency
+builder.Services.ConfigureServiceManager();
 
-// ....
+
+// 
 builder.Services.AddControllers()
                 .AddApplicationPart(typeof(Presentation.AssemblyReference).Assembly)
                 .ConfigureApiBehaviorOptions(options =>
@@ -48,14 +65,10 @@ builder.Services.AddControllers()
 
                 });
 
-builder.Services.AddOpenApi();
 
 
 var app = builder.Build();
-// app.ApplyMigration();
-
-
-
+app.ApplyMigrations();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {

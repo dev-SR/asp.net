@@ -486,6 +486,6 @@ $RECYCLE.BIN/
 *.db-shm
 *.db-wal
 
-internal_logs/
+internal_logs
 *.logs
 *.log

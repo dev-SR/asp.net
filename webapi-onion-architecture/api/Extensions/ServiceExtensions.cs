@@ -22,44 +22,58 @@ public static class ServiceExtensions
     public static void ConfigureLoggerService(this IServiceCollection services) =>
         services.AddSingleton<ILoggerManager, LoggerManager>();
 
-    public static void ConfigureSqlContext(this IServiceCollection services, IConfiguration configuration)
+    // ENABLE RUNTIME DATABASE CONTEXT
+    public static void ConfigureSqlContext(this IServiceCollection services)
     {
         services.AddDbContext<RepositoryContext>(opts =>
         {
+            Console.WriteLine(">>>Configuring SQL Context");
 
-            var database = configuration.GetConnectionString("Database");
-            if (database == "sqlite")
+            string? DatabaseProvider = Environment.GetEnvironmentVariable("DATABASE_PROVIDER");
+            string? ConnectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
+
+            if (DatabaseProvider == "sqlite")
             {
-                opts.UseSqlite(configuration.GetConnectionString("DefaultConnection"));
+                Console.WriteLine(">>>Using SQLite");
+                opts.UseSqlite(ConnectionString);
 
             }
+            else if (DatabaseProvider == "sqlserver")
+            {
+                Console.WriteLine(">>>Using SQL Server");
+                // opts.UseSqlServer(ConnectionString);
+            }
             /* 
-            cd root
-            dotnet ef migrations add firstMigration --project Repository --startup-project API
-            dotnet ef migrations add firstMigration -p Repository -s API
-            dotnet ef database update -p Repository -s API
+            To Create New Migration 
+            >>[db context and startup project in the same folder]
+                cd [root]
+                dotnet ef migrations add firstMigration --startup-project API
+                (or) dotnet ef migrations add firstMigration -s API
+            
+            >>[db context and startup project in different folders]
+                cd [root]
+                dotnet ef migrations add firstMigration --project Repository --startup-project API 
+                (or) dotnet ef migrations add firstMigration -p Repository -s API -o Data/Migrations
              */
         }
         );
     }
 
-
-    public static void ApplyMigration(this WebApplication app)
+    // APPLY MIGRATIONS AT RUNTIME
+    public static void ApplyMigrations(this IApplicationBuilder app)
     {
-
-        using (var scope = app.Services.CreateScope())
+        Console.WriteLine(">>>Applying Migrations");
+        try
         {
-            var services = scope.ServiceProvider;
-
-            try
+            using (var serviceScope = app.ApplicationServices.GetRequiredService<IServiceScopeFactory>().CreateScope())
             {
-                var context = services.GetRequiredService<RepositoryContext>();
-                context.Database.Migrate();
+                var context = serviceScope.ServiceProvider.GetService<RepositoryContext>();
+                context?.Database.Migrate();
             }
-            catch (Exception e)
-            {
-                throw new Exception($"Migration ERROR {e.Message}");
-            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($">>>An error occurred while applying migrations: {ex.Message}");
         }
     }
 
