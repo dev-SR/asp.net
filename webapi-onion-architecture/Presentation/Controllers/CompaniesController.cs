@@ -13,41 +13,41 @@ namespace Presentation.Controllers
         private readonly IServiceManager _service;
         public CompaniesController(IServiceManager service) => _service = service;
         [HttpGet]
-        public ActionResult<IEnumerable<CompanyDto>> GetCompanies()
+        public async Task<ActionResult<IEnumerable<CompanyDto>>> GetCompanies()
         {
             // throw new Exception("Exception");
-            var companies = _service.CompanyService.GetAllCompanies(trackChanges: false);
+            var companies = await _service.CompanyService.GetAllCompanies(trackChanges: false);
             return Ok(companies);
 
         }
         [HttpGet("{id:guid}", Name = "CompanyById")]
-        public ActionResult<CompanyDto> GetCompany(Guid id)
+        public async Task<ActionResult<CompanyDto?>> GetCompany(Guid id)
         {
-            var company = _service.CompanyService.GetCompany(id, trackChanges: false);
+            var company = await _service.CompanyService.GetCompany(id, trackChanges: false);
             return Ok(company);
         }
 
         [HttpPost]
-        public IActionResult CreateCompany([FromBody] CompanyForCreationDto company)
+        public async Task<IActionResult> CreateCompany([FromBody] CompanyForCreationDto company)
         {
             if (company is null)
                 return BadRequest("CompanyForCreationDto object is null");
-            var createdCompany = _service.CompanyService.CreateCompany(company);
+            var createdCompany = await _service.CompanyService.CreateCompany(company);
             return CreatedAtRoute("CompanyById", new { id = createdCompany.Id },
             createdCompany);
         }
 
         [HttpDelete("{id:guid}")]
-        public IActionResult DeleteCompany(Guid id)
+        public async Task<IActionResult> DeleteCompany(Guid id)
         {
-            _service.CompanyService.DeleteCompany(id, trackChanges: false);
+            await _service.CompanyService.DeleteCompany(id, trackChanges: false);
             return NoContent();
         }
 
         [HttpPut("{id:guid}")]
-        public IActionResult UpdateCompany(Guid id, [FromBody] CompanyForUpdateDto company)
+        public async Task<IActionResult> UpdateCompany(Guid id, [FromBody] CompanyForUpdateDto company)
         {
-            _service.CompanyService.UpdateCompany(id, company, trackChanges: true);
+            await _service.CompanyService.UpdateCompany(id, company, trackChanges: true);
             return NoContent();
         }
     }
