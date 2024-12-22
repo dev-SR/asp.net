@@ -4,7 +4,6 @@
   - [Simplified Repository Pattern Logic](#simplified-repository-pattern-logic)
     - [Repository User Interfaces and Classes](#repository-user-interfaces-and-classes)
     - [Creating a Repository Manager](#creating-a-repository-manager)
-  - [Registering RepositoryContext at a Runtime](#registering-repositorycontext-at-a-runtime)
   - [Adding a Service Layer](#adding-a-service-layer)
   - [Controllers and Routing in WEB API](#controllers-and-routing-in-web-api)
     - [Routing..](#routing)
@@ -178,7 +177,7 @@ public interface IRepositoryManager
 {
     ICompanyRepository Company { get; }
     IEmployeeRepository Employee { get; }
-    void Save();
+    Task SaveAsync();
 }
 ```
 
@@ -200,7 +199,7 @@ public sealed class RepositoryManager : IRepositoryManager
     }
     public ICompanyRepository Company => _companyRepository.Value;
     public IEmployeeRepository Employee => _employeeRepository.Value;
-    public void Save() => _repositoryContext.SaveChanges();
+    public async Task SaveAsync() => await _repositoryContext.SaveChangesAsync();
 }
 ```
 
@@ -212,7 +211,7 @@ _repository.Company.Create(anotherCompany);
 _repository.Employee.Update(employee);
 _repository.Employee.Update(anotherEmployee);
 _repository.Company.Delete(oldCompany);
-_repository.Save();
+_repository.SaveAsync();
 ```
 
 Also, The **RepositoryManager** utilizes the `Lazy` class for lazy initialization of repositories. This ensures repository instances are created only when accessed for the first time, optimizing resource usage and improving performance.
@@ -236,44 +235,6 @@ To integrate the **RepositoryManager**, register it in the main project by updat
 This ensures the `RepositoryManager` is available as a scoped service throughout the application.
 
 Excellent - The repository layer is prepared and ready to be used to fetch data from the database.
-
-
-## Registering RepositoryContext at a Runtime
-
-With the `RepositoryContextFactory` class, which implements the `IDesignTimeDbContextFactory` interface, we have registered our RepositoryContext class at **design time**. **This helps us find the RepositoryContext class in another project while executing migrations.**
-
-But, as you could see, we have the `RepositoryManager` service registration, which happens at runtime, and during that registration, w**e must have `RepositoryContext` registered as well in the runtime**, so we could inject it into other services
-
-Let’s modify the `ServiceExtensions` class
-
-```csharp
-    public static void ConfigureSqlContext(this IServiceCollection services, IConfiguration configuration)
-    {
-        services.AddDbContext<RepositoryContext>(opts =>
-        {
-
-            var database = configuration.GetConnectionString("Database");
-            if (database == "sqlite")
-            {
-                opts.UseSqlite(configuration.GetConnectionString("DefaultConnection"));
-
-            }
-            /* 
-            cd root
-            dotnet ef migrations add firstMigration --project Repository --startup-project API
-            dotnet ef migrations add firstMigration -p Repository -s API
-            dotnet ef database update -p Repository -s API
-             */
-        }
-        );
-    }
-```
-
-As the final step, we have to call this method in the `Program` class:
-
-```csharp
-builder.Services.ConfigureSqlContext(builder.Configuration);
-```
 
 
 ## Adding a Service Layer
@@ -535,7 +496,7 @@ using Entities.Models;
 namespace Contracts;
 
 public interface ICompanyRepository{
-    IEnumerable<Company> GetAllCompanies(bool trackChanges);
+    Task<IEnumerable<Company>> GetAllCompanies(bool trackChanges);
 }
 ```
 
@@ -550,8 +511,8 @@ namespace Repository;
 public class CompanyRepository : RepositoryBase<Company>, ICompanyRepository{
     public CompanyRepository(RepositoryContext repositoryContext) : base(repositoryContext) { }
 
-    public IEnumerable<Company> GetAllCompanies(bool trackChanges) =>
-                FindAll(trackChanges).OrderBy(c => c.Name).ToList();
+    public async Task<IEnumerable<Company>> GetAllCompanies(bool trackChanges) =>
+            await FindAll(trackChanges).OrderBy(c => c.Name).ToListAsync();
 }
 ```
 
@@ -565,7 +526,7 @@ As you can see, we are calling the `FindAll` method from the `RepositoryBase` cl
 using Entities.Models;
 namespace Service.Contracts;
 public interface ICompanyService{
-    IEnumerable<Company> GetAllCompanies(bool trackChanges);
+    Task<IEnumerable<CompanyDto>> GetAllCompanies(bool trackChanges);
 }
 ```
 
@@ -585,9 +546,9 @@ internal sealed class CompanyService : ICompanyService
         _logger = logger;
     }
 
-    public IEnumerable<Company> GetAllCompanies(bool trackChanges){
+    public async Task<IEnumerable<Company>> GetAllCompanies(bool trackChanges){
         try{
-            var companies = _repository.Company.GetAllCompanies(trackChanges);
+            var companies = await _repository.Company.GetAllCompanies(trackChanges);
             return companies;
         }
         catch (Exception ex){
@@ -612,9 +573,9 @@ namespace Presentation.Controllers
         public CompaniesController(IServiceManager service) => _service = service;
         
         [HttpGet]
-        public ActionResult<IEnumerable<Company>> GetCompanies() {
+        public async Task<ActionResult<IEnumerable<Company>>> GetCompanies() {
             try{
-                var companies = _service.CompanyService.GetAllCompanies(trackChanges: false);
+                var companies = await _service.CompanyService.GetAllCompanies(trackChanges: false);
                 return Ok(companies);
             }
             catch{
@@ -653,7 +614,7 @@ Now,
 using Shared.DTO;
 namespace Service.Contracts;
 public interface ICompanyService{
-    IEnumerable<CompanyDto> GetAllCompanies(bool trackChanges);
+    Task<IEnumerable<CompanyDto>> GetAllCompanies(bool trackChanges);
 }
 ```
 
@@ -668,7 +629,7 @@ internal sealed class CompanyService : ICompanyService{
     //....
     public IEnumerable<CompanyDto> GetAllCompanies(bool trackChanges){
             //..
-            var companies = _repository.Company.GetAllCompanies(trackChanges);
+            var companies = await _repository.Company.GetAllCompanies(trackChanges);
             var companiesDto = companies.Select(c => new CompanyDto(c.Id, c.Name ?? "", 
                                                 string.Join("", c.Address, c.Country))).ToList();
             return companiesDto;
@@ -680,9 +641,9 @@ internal sealed class CompanyService : ICompanyService{
 - Finally, change `Company` to `CompanyDto` in controller:
 
 ```csharp
-public ActionResult<IEnumerable<CompanyDto>> GetCompanies(){
+public async Task<ActionResult<IEnumerable<CompanyDto>>> GetCompanies(){
 //..
-    var companies = _service.CompanyService.GetAllCompanies(trackChanges: false);
+    var companies = await _service.CompanyService.GetAllCompanies(trackChanges: false);
     return Ok(companies);
 //..
 }
@@ -761,9 +722,9 @@ internal sealed class CompanyService : ICompanyService{
         _logger = logger;
     }
     //...
-    public IEnumerable<CompanyDto> GetAllCompanies(bool trackChanges){
+    public async Task<IEnumerable<CompanyDto>> GetAllCompanies(bool trackChanges){
         try{
-            var companies = _repository.Company.GetAllCompanies(trackChanges);
+            var companies = await _repository.Company.GetAllCompanies(trackChanges);
             // var companiesDto = companies.Select(c => new CompanyDto(c.Id, c.Name ?? "",
             //                                     string.Join("", c.Address, c.Country))).ToList();
             var companiesDto = _mapper.Map<IEnumerable<CompanyDto>>(companies);
@@ -835,9 +796,9 @@ app.UseExceptionHandler(opt => { });//new
 Now we can remove the `try-catch` block from the `GetAllCompanies` service method:
 
 ```csharp
-public IEnumerable<CompanyDto> GetAllCompanies(bool trackChanges)
+public async Task<IEnumerable<CompanyDto>> GetAllCompanies(bool trackChanges)
 {
-    var companies = _repository.Company.GetAllCompanies(trackChanges);
+    var companies = await _repository.Company.GetAllCompanies(trackChanges);
     var companiesDto = _mapper.Map<IEnumerable<CompanyDto>>(companies);
     return companiesDto;
 }
@@ -847,9 +808,9 @@ And from our `GetCompanies` action:
 
 ```csharp
 [HttpGet]
-public IActionResult GetCompanies()
+public async Task<ActionResult<IEnumerable<CompanyDto>>> GetCompanies()
 {
-    var companies = _service.CompanyService.GetAllCompanies(trackChanges: false);
+    var companies = await _service.CompanyService.GetAllCompanies(trackChanges: false);
     return Ok(companies);
 }
 ```
@@ -860,10 +821,10 @@ To inspect this functionality, let’s add the following line to the `GetCompani
 
 ```csharp
 [HttpGet]
-public IActionResult GetCompanies()
+public async Task<ActionResult<IEnumerable<CompanyDto>>> GetCompanies()
 {
     throw new Exception("Exception");//new
-    var companies = _service.CompanyService.GetAllCompanies(trackChanges: false);
+    var companies = await _service.CompanyService.GetAllCompanies(trackChanges: false);
     return Ok(companies);
 }
 ```
@@ -875,51 +836,54 @@ Let’s start by modifying the `ICompanyRepository` interface:
 
 ```csharp
 public interface ICompanyRepository{
-    IEnumerable<Company> GetAllCompanies(bool trackChanges);
-    Company? GetCompany(Guid companyId, bool trackChanges);
+    Task<IEnumerable<Company>> GetAllCompanies(bool trackChanges);
+    Task<Company?> GetCompany(Guid companyId, bool trackChanges);//new
 }
 ```
 
 Then, we are going to implement this interface in the `CompanyRepository.cs` file: 
 
 ```csharp
-public Company? GetCompany(Guid companyId, bool trackChanges) =>
-                FindByCondition(c => c.Id.Equals(companyId), trackChanges).SingleOrDefault();
+    public async Task<Company?> GetCompany(Guid companyId, bool trackChanges) =>
+            await FindByCondition(c => c.Id.Equals(companyId), trackChanges).SingleOrDefaultAsync();
+
 ```
 
 Then, we have to modify the `ICompanyService` interface:
 
 ```csharp
 public interface ICompanyService{
-    IEnumerable<CompanyDto> GetAllCompanies(bool trackChanges);
-    CompanyDto? GetCompany(Guid companyId, bool trackChanges);
+    Task<IEnumerable<CompanyDto>> GetAllCompanies(bool trackChanges);
+    Task<CompanyDto?> GetCompany(Guid companyId, bool trackChanges);
 }
 ```
 
 And of course, we have to implement this interface in the `CompanyService` class:
 
 ```csharp
-public CompanyDto? GetCompany(Guid id, bool trackChanges){
-    var company = _repository.Company.GetCompany(id, trackChanges);
+public async Task<CompanyDto?> GetCompany(Guid id, bool trackChanges)
+{
+    var company = await _repository.Company.GetCompany(id, trackChanges);
     //Check if the company is null
-    
+
     var companyDto = _mapper.Map<CompanyDto>(company);
     return companyDto;
 }
+
 ```
+
 see the comment about the `null` checks, which we are going to solve just in a minute.
 
 Finally, let’s change the CompanyController class:
 
 ```csharp
 [HttpGet("{id:guid}")]
-public ActionResult<CompanyDto> GetCompany(Guid id)
+public async Task<ActionResult<CompanyDto?>> GetCompany(Guid id)
 {
-    var company = _service.CompanyService.GetCompany(id, trackChanges: false);
+    var company = await _service.CompanyService.GetCompany(id, trackChanges: false);
     return Ok(company);
 }
 ```
-
 
 ### Handling Invalid Requests in a Service Layer
 
@@ -946,21 +910,21 @@ public sealed class CompanyNotFoundException : NotFoundException
 }
 ```
 
-Right after that, we can remove the comment in the `GetCompany` method and throw this exception:
+Right after that, we can remove the comment in the `GetCompany` method and throw this exception in the `CompanyService` class:
 
 
 ```csharp
-    public CompanyDto? GetCompany(Guid id, bool trackChanges)
-    {
-        var company = _repository.Company.GetCompany(id, trackChanges);
-        if (company is null)
-            throw new CompanyNotFoundException(id);
+public async Task<CompanyDto?> GetCompany(Guid id, bool trackChanges)
+{
+    var company = await _repository.Company.GetCompany(id, trackChanges);
+    if (company is null)
+        throw new CompanyNotFoundException(id);
 
-        var companyDto = _mapper.Map<CompanyDto>(company);
-        return companyDto;
-    }
+
+    var companyDto = _mapper.Map<CompanyDto>(company);
+    return companyDto;
+}
 ```
-
 
 Finally, we have to modify our error middleware because we don’t want to return the `500` error message to our clients for every custom error we throw from the service layer.
 
@@ -971,23 +935,30 @@ So, let’s modify the `GlobalExceptionHandler` class in the main project:
                                                 Exception exception,
                                                 CancellationToken cancellationToken)
     {
-        httpContext.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
-        httpContext.Response.ContentType = "application/json";
+
+        _logger.LogError($"Exception occurred: {exception.Message}");
         var contextFeature = httpContext.Features.Get<IExceptionHandlerFeature>();
+
         if (contextFeature != null)
-        {   //new
+        {
+
             httpContext.Response.StatusCode = contextFeature.Error switch
             {
                 NotFoundException => StatusCodes.Status404NotFound,
+                BadRequestException => StatusCodes.Status400BadRequest,
                 _ => StatusCodes.Status500InternalServerError
             };
-            //new
-            _logger.LogError($"Something went wrong: {exception.Message}");
-            await httpContext.Response.WriteAsync(new ErrorDetails()
+
+
+            var problemDetails = new ErrorDetails
             {
                 StatusCode = httpContext.Response.StatusCode,
-                Message = contextFeature.Error.Message,//new
-            }.ToString());
+                Message = contextFeature.Error.Message,
+            };
+
+
+            await httpContext.Response.WriteAsJsonAsync(problemDetails, cancellationToken);
+
         }
         return true;
     }
@@ -1020,16 +991,16 @@ Before we create an action to fetch all the employees per company, we have to mo
 
 ```csharp
 public interface IEmployeeRepository{
-    IEnumerable<Employee> GetEmployees(Guid companyId, bool trackChanges);
+    Task<IEnumerable<Employee>> GetEmployees(Guid companyId, bool trackChanges);
 }
 ```
 
 After interface modification, we are going to modify the `EmployeeRepository` class:
 
 ```csharp
-    public IEnumerable<Employee> GetEmployees(Guid companyId, bool trackChanges) =>
-        FindByCondition(e => e.CompanyId.Equals(companyId), trackChanges)
-        .OrderBy(e => e.Name).ToList();
+    public async Task<IEnumerable<Employee>> GetEmployees(Guid companyId, bool trackChanges) =>
+        await FindByCondition(e => e.CompanyId.Equals(companyId), trackChanges)
+        .OrderBy(e => e.Name).ToListAsync();
 ```
 
 Then, before we start adding code to the service layer, we are going to create a new DTO. Let’s name it EmployeeDto and add it to the `Shared/DTO` folder:
@@ -1054,7 +1025,7 @@ Now, we can modify the `IEmployeeService` interface:
 
 ```csharp
 public interface IEmployeeService{
-    IEnumerable<EmployeeDto> GetEmployees(Guid companyId, bool trackChanges);
+    Task<IEnumerable<EmployeeDto>> GetEmployees(Guid companyId, bool trackChanges);
 }
 
 ```
@@ -1062,12 +1033,12 @@ public interface IEmployeeService{
 And of course, we have to implement this interface in the `EmployeeService` class:
 
 ```csharp
-public IEnumerable<EmployeeDto> GetEmployees(Guid companyId, bool trackChanges)
+public async Task<IEnumerable<EmployeeDto>> GetEmployees(Guid companyId, bool trackChanges)
 {
-    var company = _repository.Company.GetCompany(companyId, trackChanges);
+    var company = await _repository.Company.GetCompany(companyId, trackChanges);
     if (company is null)
         throw new CompanyNotFoundException(companyId);
-    var employeesFromDb = _repository.Employee.GetEmployees(companyId, trackChanges);
+    var employeesFromDb = await _repository.Employee.GetEmployees(companyId, trackChanges);
     var employeesDto = _mapper.Map<IEnumerable<EmployeeDto>>(employeesFromDb);
     return employeesDto;
 }
@@ -1075,13 +1046,13 @@ public IEnumerable<EmployeeDto> GetEmployees(Guid companyId, bool trackChanges)
 
 Finally, let’s modify the Employees controller:
 
-```csharp
-    [HttpGet]
-    public IActionResult GetEmployeesForCompany(Guid companyId)
-    {
-        var employees = _service.EmployeeService.GetEmployees(companyId, trackChanges: false);
-        return Ok(employees);
-    }
+```csharp  
+[HttpGet]
+public async Task<ActionResult<IEnumerable<EmployeeDto>>> GetEmployeesForCompany(Guid companyId)
+{
+    var employees = await _service.EmployeeService.GetEmployees(companyId, trackChanges: false);
+    return Ok(employees);
+}
 ```
 
 
@@ -1096,17 +1067,17 @@ So, as we did in previous sections, let’s start with the `IEmployeeRepository`
 ```csharp
 public interface IEmployeeRepository
 {
-    IEnumerable<Employee> GetEmployees(Guid companyId, bool trackChanges);
-    Employee? GetEmployee(Guid companyId, Guid id, bool trackChanges);
+    Task<IEnumerable<Employee>> GetEmployees(Guid companyId, bool trackChanges);
+    Task<Employee?> GetEmployee(Guid companyId, Guid id, bool trackChanges);
 }
 ```
 
 Now, let’s implement this method in the `EmployeeRepository` class:
 
 ```csharp
-public Employee? GetEmployee(Guid companyId, Guid id, bool trackChanges) =>
-    FindByCondition(e => e.CompanyId.Equals(companyId) && e.Id.Equals(id), trackChanges)
-    .SingleOrDefault();
+public async Task<Employee?> GetEmployee(Guid companyId, Guid id, bool trackChanges) =>
+    await FindByCondition(e => e.CompanyId.Equals(companyId) && e.Id.Equals(id), trackChanges)
+    .SingleOrDefaultAsync();
 ```
 
 Next, let’s add another exception class in the `Entities/Exceptions` folder:
@@ -1123,20 +1094,20 @@ To continue, we have to modify the `IEmployeeService` interface:
 ```csharp
 public interface IEmployeeService
 {
-    IEnumerable<EmployeeDto> GetEmployees(Guid companyId, bool trackChanges);
-    EmployeeDto? GetEmployee(Guid companyId, Guid id, bool trackChanges);
+    Task<IEnumerable<EmployeeDto>> GetEmployees(Guid companyId, bool trackChanges);
+    Task<EmployeeDto?> GetEmployee(Guid companyId, Guid id, bool trackChanges);
 }
 ```
 
-And implement this new method in the EmployeeService class:
+And implement this new method in the `EmployeeService` class:
 
 ```csharp
-public EmployeeDto GetEmployee(Guid companyId, Guid id, bool trackChanges)
+public async Task<EmployeeDto?> GetEmployee(Guid companyId, Guid id, bool trackChanges)
 {
-    var company = _repository.Company.GetCompany(companyId, trackChanges);
+    var company = await _repository.Company.GetCompany(companyId, trackChanges);
     if (company is null)
         throw new CompanyNotFoundException(companyId);
-    var employeeDb = _repository.Employee.GetEmployee(companyId, id, trackChanges);
+    var employeeDb = await _repository.Employee.GetEmployee(companyId, id, trackChanges);
     if (employeeDb is null)
         throw new EmployeeNotFoundException(id);
     var employee = _mapper.Map<EmployeeDto>(employeeDb);
@@ -1148,9 +1119,9 @@ Finally, let’s modify the `EmployeeController` class:
 
 ```csharp
 [HttpGet("{id:guid}")]
-public IActionResult GetEmployeeForCompany(Guid companyId, Guid id)
+public async Task<ActionResult<EmployeeDto>> GetEmployeeForCompany(Guid companyId, Guid id)
 {
-    var employee = _service.EmployeeService.GetEmployee(companyId, id, trackChanges: false);
+    var employee = await _service.EmployeeService.GetEmployee(companyId, id, trackChanges: false);
     return Ok(employee);
 }
 ```
@@ -1163,7 +1134,9 @@ Firstly, let’s modify the decoration attribute for the `GetCompany` action in 
 
 ```csharp
 [HttpGet("{id:guid}", Name = "CompanyById")]
-public ActionResult<CompanyDto> GetCompany(Guid id)
+public async Task<ActionResult<CompanyDto?>> GetCompany(Guid id) {
+    //..
+}
 ```
 
 With this modification, we are setting the name for the action. This name will come in handy in the action method for creating a new company (- returning response `return CreatedAtRoute("CompanyById", new { id = createdCompany.Id }, createdCompany);`)
@@ -1180,11 +1153,13 @@ We can see that this DTO record is almost the same as the `Company` record but w
 let’s continue by modifying the `ICompanyRepository` interface:
 
 ```csharp
-public interface ICompanyRepository{
-    IEnumerable<Company> GetAllCompanies(bool trackChanges);
-    Company? GetCompany(Guid companyId, bool trackChanges);
+public interface ICompanyRepository
+{
+    Task<IEnumerable<Company>> GetAllCompanies(bool trackChanges);
+    Task<Company?> GetCompany(Guid companyId, bool trackChanges);
     void CreateCompany(Company company);//new
 }
+
 ```
 
 Now implement that interface:
@@ -1201,17 +1176,19 @@ Next, we want to modify the `ICompanyService` interface:
 ```csharp
 public interface ICompanyService{
     //..
-    CompanyDto CreateCompany(CompanyForCreationDto company);
+    Task<CompanyDto> CreateCompany(CompanyForCreationDto company);
 }
 ```
 
 And of course, we have to implement this method in the `CompanyService` class:
 
 ```csharp
-public CompanyDto CreateCompany(CompanyForCreationDto company){
+public async Task<CompanyDto?> CreateCompany(CompanyForCreationDto company)
+{
     var companyEntity = _mapper.Map<Company>(company);
+
     _repository.Company.CreateCompany(companyEntity);
-    _repository.Save();
+    await _repository.SaveAsync();
     var companyToReturn = _mapper.Map<CompanyDto>(companyEntity);
     return companyToReturn;
 }
@@ -1233,18 +1210,14 @@ Our POST action accepts a `CompanyForCreationDto` parameter, which is also used 
 Last, let’s modify the controller, `CompaniesController.cs`:
 
 ```csharp
-[HttpGet("{id:guid}", Name = "CompanyById")]
-public ActionResult<CompanyDto> GetCompany(Guid id){
-    //...
-}
-
 [HttpPost]
-public IActionResult CreateCompany([FromBody] CompanyForCreationDto company)
+public async Task<IActionResult> CreateCompany([FromBody] CompanyForCreationDto company)
 {
     if (company is null)
         return BadRequest("CompanyForCreationDto object is null");
-    var createdCompany = _service.CompanyService.CreateCompany(company);
-    return CreatedAtRoute("CompanyById", new { id = createdCompany.Id }, createdCompany);
+    var createdCompany = await _service.CompanyService.CreateCompany(company);
+    return CreatedAtRoute("CompanyById", new { id = createdCompany.Id },
+    createdCompany);
 }
 ```
 
@@ -1271,8 +1244,8 @@ The next step is to modify the `IEmployeeRepository` interface:
 
 ```csharp
 public interface IEmployeeRepository{
-    IEnumerable<Employee> GetEmployees(Guid companyId, bool trackChanges);
-    Employee? GetEmployee(Guid companyId, Guid id, bool trackChanges);
+    Task<IEnumerable<Employee>> GetEmployees(Guid companyId, bool trackChanges);
+    Task<Employee?> GetEmployee(Guid companyId, Guid id, bool trackChanges);
     void CreateEmployeeForCompany(Guid companyId, Employee employee);//new
 }
 ```
@@ -1306,47 +1279,48 @@ The next thing we have to do is `IEmployeeService` modification:
 ```csharp
 public interface IEmployeeService
 {
-    IEnumerable<EmployeeDto> GetEmployees(Guid companyId, bool trackChanges);
-    EmployeeDto? GetEmployee(Guid companyId, Guid id, bool trackChanges);
-    EmployeeDto CreateEmployeeForCompany(Guid companyId, EmployeeForCreationDto employeeForCreation, bool trackChanges);//new
+    Task<IEnumerable<EmployeeDto>> GetEmployees(Guid companyId, bool trackChanges);
+    Task<EmployeeDto?> GetEmployee(Guid companyId, Guid id, bool trackChanges);
+    Task<EmployeeDto?> CreateEmployeeForCompany(Guid companyId, EmployeeForCreationDto employeeForCreation, bool trackChanges);
 }
 ``` 
 
 And implement this new method in `EmployeeService`:
 
 ```csharp
-public EmployeeDto CreateEmployeeForCompany(Guid companyId,
+public async Task<EmployeeDto?> CreateEmployeeForCompany(Guid companyId,
                                             EmployeeForCreationDto employeeForCreation,
                                             bool trackChanges)
 {
-    var company = _repository.Company.GetCompany(companyId, trackChanges);
+    var company = await _repository.Company.GetCompany(companyId, trackChanges);
     if (company is null)
         throw new CompanyNotFoundException(companyId);
 
     var employeeEntity = _mapper.Map<Employee>(employeeForCreation);
 
     _repository.Employee.CreateEmployeeForCompany(companyId, employeeEntity);
-    _repository.Save();
+    await _repository.SaveAsync();
 
     var employeeToReturn = _mapper.Map<EmployeeDto>(employeeEntity);
 
     return employeeToReturn;
 }
-```
 
+```
 
 Finally, let’s modify the `EmployeesController` class:
 
 ```csharp
 [HttpPost]
-public IActionResult CreateEmployeeForCompany(Guid companyId, [FromBody] EmployeeForCreationDto employee)
+public async Task<ActionResult<EmployeeDto?>> CreateEmployeeForCompany(Guid companyId, [FromBody] EmployeeForCreationDto employee)
 {
     if (employee is null)
         return BadRequest("EmployeeForCreationDto object is null");
 
-    var createdEmployee = _service.EmployeeService.CreateEmployeeForCompany(companyId, employee, trackChanges: false);
-    return CreatedAtRoute("GetEmployeeForCompany", new { companyId, id = createdEmployee.Id }, createdEmployee);
+    var createdEmployee = await _service.EmployeeService.CreateEmployeeForCompany(companyId, employee, trackChanges: false);
+    return CreatedAtRoute("GetEmployeeForCompany", new { companyId, id = createdEmployee!.Id }, createdEmployee);
 }
+
 ```
 
 For this to work, we have to modify the HTTP attribute above the `GetEmployeeForCompany` action:
@@ -1423,16 +1397,27 @@ public class EmployeeRepository : RepositoryBase<Employee>, IEmployeeRepository
 After that, we have to modify the `IEmployeeService` interface:
 
 ```csharp
-    public void DeleteEmployeeForCompany(Guid companyId, Guid id, bool trackChanges)
+public interface IEmployeeService
+{
+    //...
+    Task DeleteEmployeeForCompany(Guid companyId, Guid id, bool trackChanges);
+}
+```
+
+Then implement `DeleteEmployeeForCompany` method in the `EmployeeService` class:
+
+
+```csharp
+    public async Task DeleteEmployeeForCompany(Guid companyId, Guid id, bool trackChanges)
     {
-        var company = _repository.Company.GetCompany(companyId, trackChanges);
+        var company = await _repository.Company.GetCompany(companyId, trackChanges);
         if (company is null)
             throw new CompanyNotFoundException(companyId);
-        var employeeForCompany = _repository.Employee.GetEmployee(companyId, id, trackChanges);
+        var employeeForCompany = await _repository.Employee.GetEmployee(companyId, id, trackChanges);
         if (employeeForCompany is null)
             throw new EmployeeNotFoundException(id);
         _repository.Employee.DeleteEmployee(employeeForCompany);
-        _repository.Save();
+        await _repository.SaveAsync();
     }
 ```
 
@@ -1440,12 +1425,13 @@ Finally, we can add a delete action to the controller class:
 
 ```csharp
 [HttpDelete("{id:guid}")]
-public IActionResult DeleteEmployeeForCompany(Guid companyId, Guid id)
+public async Task<IActionResult> DeleteEmployeeForCompany(Guid companyId, Guid id)
 {
-    _service.EmployeeService.DeleteEmployeeForCompany(companyId, id, trackChanges:
+    await _service.EmployeeService.DeleteEmployeeForCompany(companyId, id, trackChanges:
     false);
     return NoContent();
 }
+
 ```
 
 ### Deleting a Parent Resource with its Children
@@ -1459,11 +1445,12 @@ Well, let’s do that following the same steps as in a previous example:
 ```csharp
 public interface ICompanyRepository
 {
-    IEnumerable<Company> GetAllCompanies(bool trackChanges);
-    Company? GetCompany(Guid companyId, bool trackChanges);
+    Task<IEnumerable<Company>> GetAllCompanies(bool trackChanges);
+    Task<Company?> GetCompany(Guid companyId, bool trackChanges);
     void CreateCompany(Company company);
-    void DeleteCompany(Company company);//new
+    void DeleteCompany(Company company);
 }
+```
 
 Then let’s modify the repository class:
 
@@ -1480,10 +1467,10 @@ Then we have to modify the service interface:
 ```csharp
 public interface ICompanyService
 {
-    IEnumerable<CompanyDto> GetAllCompanies(bool trackChanges);
-    CompanyDto? GetCompany(Guid companyId, bool trackChanges);
-    CompanyDto CreateCompany(CompanyForCreationDto company);
-    void DeleteCompany(Guid companyId, bool trackChanges);
+    Task<IEnumerable<CompanyDto>> GetAllCompanies(bool trackChanges);
+    Task<CompanyDto?> GetCompany(Guid companyId, bool trackChanges);
+    Task<CompanyDto> CreateCompany(CompanyForCreationDto company);
+    Task DeleteCompany(Guid companyId, bool trackChanges);
 }
 ```
 
@@ -1492,13 +1479,13 @@ And the service class:
 ```csharp
 internal sealed class CompanyService : ICompanyService
 {
-    public void DeleteCompany(Guid companyId, bool trackChanges)
+    public async Task DeleteCompany(Guid companyId, bool trackChanges)
     {
-        var company = _repository.Company.GetCompany(companyId, trackChanges);
+        var company = await _repository.Company.GetCompany(companyId, trackChanges);
         if (company is null)
             throw new CompanyNotFoundException(companyId);
         _repository.Company.DeleteCompany(company);
-        _repository.Save();
+        await _repository.SaveAsync();
     }
 }
 ```
@@ -1507,11 +1494,12 @@ Finally, let’s modify our controller:
 
 ```csharp
 [HttpDelete("{id:guid}")]
-public IActionResult DeleteCompany(Guid id)
+public async Task<IActionResult> DeleteCompany(Guid id)
 {
-    _service.CompanyService.DeleteCompany(id, trackChanges: false);
+    await _service.CompanyService.DeleteCompany(id, trackChanges: false);
     return NoContent();
 }
+
 ```
 
 ## PUT Requests
@@ -1540,7 +1528,7 @@ After adding the mapping rule, we can modify the `IEmployeeService` interface:
 ```csharp
 public interface IEmployeeService{
     //...
-    void UpdateEmployeeForCompany(Guid companyId, Guid id,
+    Task UpdateEmployeeForCompany(Guid companyId, Guid id,
                                     EmployeeForUpdateDto employeeForUpdate,
                                     bool compTrackChanges,
                                     bool empTrackChanges);
@@ -1552,22 +1540,22 @@ We are declaring a method that contains both id parameters – one for the compa
 That said, let’s modify the `EmployeeService` class:
 
 ```csharp
-    public void UpdateEmployeeForCompany(Guid companyId, Guid id,
-                                            EmployeeForUpdateDto employeeForUpdate,
-                                            bool compTrackChanges,
-                                            bool empTrackChanges)
-    {
-        var company = _repository.Company.GetCompany(companyId, compTrackChanges);
-        if (company is null)
-            throw new CompanyNotFoundException(companyId);
+public async Task UpdateEmployeeForCompany(Guid companyId, Guid id,
+                                        EmployeeForUpdateDto employeeForUpdate,
+                                        bool compTrackChanges,
+                                        bool empTrackChanges)
+{
+    var company = await _repository.Company.GetCompany(companyId, compTrackChanges);
+    if (company is null)
+        throw new CompanyNotFoundException(companyId);
 
-        var employeeEntity = _repository.Employee.GetEmployee(companyId, id, empTrackChanges);
-        if (employeeEntity is null)
-            throw new EmployeeNotFoundException(id);
+    var employeeEntity = await _repository.Employee.GetEmployee(companyId, id, empTrackChanges);
+    if (employeeEntity is null)
+        throw new EmployeeNotFoundException(id);
 
-        _mapper.Map(employeeForUpdate, employeeEntity);
-        _repository.Save();
-    }
+    _mapper.Map(employeeForUpdate, employeeEntity);
+    await _repository.SaveAsync();
+}
 ```
 
 As we’ve already said: the `trackChanges` parameter will be set to `true` for the `employeeEntity`. That’s because we want EF Core to track
@@ -1583,10 +1571,10 @@ Now, when we have all of these, let’s modify the `EmployeesController`:
 
 ```csharp
 [HttpPut("{id:guid}")]
-public IActionResult UpdateEmployeeForCompany(Guid companyId, Guid id, [FromBody] EmployeeForUpdateDto employee)
+public async Task<IActionResult> UpdateEmployeeForCompany(Guid companyId, Guid id, [FromBody] EmployeeForUpdateDto employee)
 {
-    _service.EmployeeService.UpdateEmployeeForCompany(companyId, id, employee,
-    compTrackChanges: false, empTrackChanges: true);
+    await _service.EmployeeService.UpdateEmployeeForCompany(companyId, id, employee,
+        compTrackChanges: false, empTrackChanges: true);
     return NoContent();
 }
 ```
@@ -1622,21 +1610,21 @@ Then, let’s move on to the interface modification:
 public interface ICompanyService
 {
     //...
-    void UpdateCompany(Guid companyId, CompanyForUpdateDto companyForUpdate, bool trackChanges);
+    Task UpdateCompany(Guid companyId, CompanyForUpdateDto companyForUpdate, bool trackChanges);
 }
 ``` 
 
 And of course, the service class modification:
 
 ```csharp
-public void UpdateCompany(Guid companyId, CompanyForUpdateDto companyForUpdate, bool trackChanges)
+public async Task UpdateCompany(Guid companyId, CompanyForUpdateDto companyForUpdate, bool trackChanges)
 {
-    var companyEntity = _repository.Company.GetCompany(companyId, trackChanges);
+    var companyEntity = await _repository.Company.GetCompany(companyId, trackChanges);
     if (companyEntity is null)
         throw new CompanyNotFoundException(companyId);
-    
+
     _mapper.Map(companyForUpdate, companyEntity);
-    _repository.Save();
+    await _repository.SaveAsync();
 }
 ```
 
@@ -1644,9 +1632,9 @@ Right now, we can modify our controller:
 
 ```csharp
 [HttpPut("{id:guid}")]
-public IActionResult UpdateCompany(Guid id, [FromBody] CompanyForUpdateDto company)
+public async Task<IActionResult> UpdateCompany(Guid id, [FromBody] CompanyForUpdateDto company)
 {
-    _service.CompanyService.UpdateCompany(id, company, trackChanges: true);
+    await _service.CompanyService.UpdateCompany(id, company, trackChanges: true);
     return NoContent();
 }
 ```

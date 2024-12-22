@@ -45,6 +45,7 @@ internal sealed class CompanyService : ICompanyService
     public async Task<CompanyDto?> CreateCompany(CompanyForCreationDto company)
     {
         var companyEntity = _mapper.Map<Company>(company);
+
         _repository.Company.CreateCompany(companyEntity);
         await _repository.SaveAsync();
         var companyToReturn = _mapper.Map<CompanyDto>(companyEntity);
