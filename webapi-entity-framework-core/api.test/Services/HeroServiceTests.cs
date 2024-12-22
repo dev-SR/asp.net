@@ -1,5 +1,5 @@
 using API.DTO;
-using API.Model;
+using API.Entity;
 using API.Services;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
