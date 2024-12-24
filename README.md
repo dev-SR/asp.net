@@ -10,6 +10,11 @@
       - [Implementing the Interface and NIog.Config File](#implementing-the-interface-and-niogconfig-file)
       - [Configuring Logger Service for Logging Messages](#configuring-logger-service-for-logging-messages)
       - [Logger Service Usage](#logger-service-usage)
+    - [AutoMapper](#automapper)
+      - [**Basic Example**](#basic-example)
+      - [**Custom Mapping Example**](#custom-mapping-example)
+      - [**Mapping Nested Objects**](#mapping-nested-objects)
+    - [**Mapping Collections**](#mapping-collections)
     - [Database Connection and Migrations](#database-connection-and-migrations)
       - [Install `DotNetEnv` package](#install-dotnetenv-package)
       - [Creating Models](#creating-models)
@@ -282,6 +287,136 @@ public class WeatherForecastController : ControllerBase
     }
 }
 ```
+
+### AutoMapper
+
+is a library in C# designed to simplify object-to-object mapping. It's especially useful when you need to transform data from one object type to another, for instance, mapping between DTOs (Data Transfer Objects) and domain models. It helps reduce boilerplate code and ensures a consistent mapping process.
+
+**How AutoMapper Works**
+1. **Configuration**: Define the mappings between source and destination types.
+2. **Mapping**: Use the mapper to map objects of the source type to the destination type.
+3. **Validation**: AutoMapper checks that all mappings are correctly defined at runtime.
+
+Install AutoMapper using NuGet:
+```bash
+Install-Package AutoMapper
+```
+#### **Basic Example**
+
+**Step 1. Defining the Models**
+
+```csharp
+public class Source
+{
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+}
+
+public class Destination
+{
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+}
+```
+
+**Step 2. Configuring AutoMapper**
+
+```csharp
+using AutoMapper;
+
+var config = new MapperConfiguration(cfg =>
+{
+    cfg.CreateMap<Source, Destination>();
+});
+
+IMapper mapper = config.CreateMapper();
+```
+
+*Step 3. Mapping Objects**
+
+```csharp
+var source = new Source
+{
+    FirstName = "John",
+    LastName = "Doe"
+};
+
+var destination = mapper.Map<Destination>(source);
+
+Console.WriteLine($"FirstName: {destination.FirstName}, LastName: {destination.LastName}");
+```
+
+**Output**:
+```
+FirstName: John, LastName: Doe
+```
+
+
+
+#### **Custom Mapping Example**
+
+**1. Customizing Properties**
+```csharp
+cfg.CreateMap<Source, Destination>()
+   .ForMember(dest => dest.FirstName, opt => opt.MapFrom(src => src.FirstName.ToUpper()));
+```
+
+ **2. Using Custom Mapping**
+```csharp
+var destination = mapper.Map<Destination>(source);
+
+Console.WriteLine($"FirstName: {destination.FirstName}, LastName: {destination.LastName}");
+```
+
+**Output**:
+```
+FirstName: JOHN, LastName: Doe
+```
+
+---
+
+#### **Mapping Nested Objects**
+
+```csharp
+public class SourceNested
+{
+    public string Name { get; set; }
+    public Address Address { get; set; }
+}
+
+    public class Address
+    {
+        public string City { get; set; }
+    }
+
+public class Destination
+{
+    public string Name { get; set; }
+    public string City { get; set; }
+}
+```
+
+**Configuring Mapping**
+
+```csharp
+cfg.CreateMap<SourceNested, Destination>()
+   .ForMember(dest => dest.City, opt => opt.MapFrom(src => src.Address.City));
+```
+
+---
+
+### **Mapping Collections**
+
+```csharp
+List<Source> sources = new List<Source>
+{
+    new Source { FirstName = "John", LastName = "Doe" },
+    new Source { FirstName = "Jane", LastName = "Smith" }
+};
+
+List<Destination> destinations = mapper.Map<List<Destination>>(sources);
+```
+
 
 ### Database Connection and Migrations
 
