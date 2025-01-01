@@ -22,6 +22,26 @@
         - [One-to-One Relationship](#one-to-one-relationship)
         - [Many-to-Many Relationship](#many-to-many-relationship)
       - [Creating an instance of the application’s DbContext](#creating-an-instance-of-the-applications-dbcontext)
+  - [CRUD](#crud)
+    - [CREATE](#create)
+      - [Non-Relational](#non-relational)
+        - [creating single principal record](#creating-single-principal-record)
+        - [creating principal record in bulks](#creating-principal-record-in-bulks)
+      - [Relational](#relational)
+        - [(1-m) Create dependent and connect it's principal by foreign key](#1-m-create-dependent-and-connect-its-principal-by-foreign-key)
+        - [(1-m) Create dependent and connect it's principal by navigational property](#1-m-create-dependent-and-connect-its-principal-by-navigational-property)
+        - [(1-m) Create both dependent and principal and connect them by id](#1-m-create-both-dependent-and-principal-and-connect-them-by-id)
+        - [(1-m) Create both dependent and principal and connect them by navigational Property](#1-m-create-both-dependent-and-principal-and-connect-them-by-navigational-property)
+        - [(m-1) Create principal and along with it's dependents](#m-1-create-principal-and-along-with-its-dependents)
+        - [1-1/0 relation](#1-10-relation)
+        - [Many-to-Many](#many-to-many)
+    - [READ](#read)
+      - [Non-Relational](#non-relational-1)
+        - [Get all records](#get-all-records)
+        - [Get single records](#get-single-records)
+        - [Get records with including it's Parent record](#get-records-with-including-its-parent-record)
+        - [Get a record with including it's Child records](#get-a-record-with-including-its-child-records)
+        - [Select many-to-many](#select-many-to-many)
 
 ## Defining a Model
 
@@ -383,3 +403,331 @@ public class RepositoryContext : DbContext
 <p align="center">
 <img src="img/dbcon.jpg" alt="dbcon.jpg" width="600px"/>
 </p>
+
+## CRUD
+
+Example models:
+
+`Models.cs`
+
+```csharp
+public class League
+{
+    public int Id { get; set; }
+    public required string Name { get; set; }
+    // One-to-many relationship: A League can have many Teams
+    public virtual List<Team> Teams { get; set; } = new List<Team>();//or assign `null!` null-forgiving operator
+}
+
+public class Team
+{
+    public int Id { get; set; }
+    public required string Name { get; set; }
+    // Foreign key for the League
+    public int LeagueId { get; set; }
+    // Navigation property for the League (many-to-one)
+    public virtual League League { get; set; } = null!;
+    // Navigation property for the one-to-one relationship with Coach
+    public virtual Coach? Coach { get; set; }
+    // Navigation properties for matches
+    public virtual List<Match> HomeMatches { get; set; } = new List<Match>();
+    public virtual List<Match> AwayMatches { get; set; } = new List<Match>();
+}
+
+/* 
+
+TeamA -> Match (HomeTeam, AwayTeam) <- TeamB
+
+TeamA has many HomeMatches (1-M)
+TeamB has many AwayMatches (1-M)
+Teams has many Matches with other Teams (M-M)
+
+Similar to :
+
+Customer -> Order(CustomerId, ProductId) <- Product
+
+Customer makes M Orders (1-M)
+Product has M Orders (M-1)
+Many products has many Cu
+ */
+public class Match
+{
+    public int Id { get; set; }
+    public int HomeTeamId { get; set; }
+    public virtual Team HomeTeam { get; set; } = null!;
+    public int AwayTeamId { get; set; }
+    public virtual Team AwayTeam { get; set; } = null!;
+    public decimal TicketPrice { get; set; }
+    public DateTime Date { get; set; }
+}
+
+/* 
+This type of complex relationship must be handled with fluent API
+> Without fluent API, migration will throw the following error >  The exception 'Unable to determine the relationship represented by navigation 'Match.AwayTeam' of type 'Team'.
+ 
+Therefore see > TeamConfiguration class for the configuration of the relationship between Team and Match
+
+Other relationships are following the convention and do not require fluent API
+ */
+public class Coach
+{
+    public int Id { get; set; }
+    public required string Name { get; set; }
+    // Nullable foreign key for the Team
+    public int? TeamId { get; set; }
+    // Navigation property for the one-to-one relationship with Team
+    public virtual Team? Team { get; set; }
+}
+
+```
+
+`TeamConfiguration.cs`
+
+```csharp
+public class TeamConfiguration : IEntityTypeConfiguration<Team>
+{
+    public void Configure(EntityTypeBuilder<Team> builder)
+    {
+
+        builder.HasMany(m => m.HomeMatches)
+            .WithOne(m => m.HomeTeam)
+            .HasForeignKey(m => m.HomeTeamId)
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasMany(m => m.AwayMatches)
+            .WithOne(m => m.AwayTeam)
+            .HasForeignKey(m => m.AwayTeamId)
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+```
+
+
+### CREATE
+
+#### Non-Relational
+
+##### creating single principal record
+
+```csharp
+    var league = new League
+    {
+        Name = "League 1",
+        // Id = not required
+    };
+    await context.Leagues.AddAsync(league);
+    await context.SaveChangesAsync();
+```
+
+##### creating principal record in bulks
+
+```csharp
+    var leagues = new List<League> {
+        new League{Name = "League 2"},
+        new League{Name = "League 3"},
+    };
+
+    await context.Leagues.AddRangeAsync(leagues);
+    await context.SaveChangesAsync();
+```
+
+#### Relational
+
+Creating with any dependent table without providing it's principal table reference will throw `'FOREIGN KEY constraint failed'` exception.
+
+Relation with it's principal table must be established through foreign key or navigation property.
+
+
+##### (1-m) Create dependent and connect it's principal by foreign key 
+
+```csharp
+var leagueParent = await context.Leagues.FirstOrDefaultAsync(l => l.Id == league1Id);
+if (leagueParent != null)
+{
+    var teamChild = new Team
+    {
+        Name = "Team 1",
+        LeagueId = leagueParent.Id
+    };
+    
+    await context.Teams.AddAsync(teamChild);
+    await context.SaveChangesAsync();
+}
+```
+
+##### (1-m) Create dependent and connect it's principal by navigational property
+
+```csharp
+ var leagueParent = await context.Leagues.FindAsync(league1Id);
+if (leagueParent != null)
+{
+    var teamChild = new Team
+    {
+        Name = "Team 2",
+        League = leagueParent
+    };
+    
+    await context.Teams.AddAsync(teamChild);
+    await context.SaveChangesAsync();
+
+}
+```
+
+##### (1-m) Create both dependent and principal and connect them by id 
+
+```csharp
+var league = new League { Name = "League 4" };
+
+await context.Leagues.AddAsync(league);
+await context.SaveChangesAsync();// must be called before adding team; otherwise, league.Id will be null
+Console.WriteLine($"League Id: {league.Id}");
+
+var team = new Team { Name = "Team 4", LeagueId = league.Id };
+
+await context.Teams.AddAsync(team);
+await context.SaveChangesAsync();
+```
+
+##### (1-m) Create both dependent and principal and connect them by navigational Property
+
+```csharp
+var league = new League { Name = "League 4" };
+var team = new Team { Name = "Team 4", League = league };
+
+await context.Teams.AddAsync(team);
+await context.SaveChangesAsync();
+
+/* 
+    No need to add league to context
+    ⛔await context.Leagues.AddAsync(league);
+    ⛔await context.SaveChangesAsync();
+    
+    SaveChanges will automatically add league to context
+    */
+```
+
+##### (m-1) Create principal and along with it's dependents
+
+```csharp
+    var teams = new List<Team>
+    {
+        new Team { Name = "Team 5" },
+        new Team { Name = "Team 6" }
+    };
+
+    var league = new League { Name = "League 5", Teams = teams };
+    await context.Leagues.AddAsync(league);
+    await context.SaveChangesAsync();
+```
+
+##### 1-1/0 relation
+
+```csharp
+//    1-1
+   var coach1 = new Coach { Name = "Jose Mourinho", TeamId = 3 };
+   await context.AddAsync(coach1);
+//    1-0
+   var coach2 = new Coach { Name = "Antonio Conte" };
+   
+   await context.AddAsync(coach2);
+   await context.SaveChangesAsync();
+```
+
+
+##### Many-to-Many
+
+```csharp
+    var teamA = await context.Teams.FirstOrDefaultAsync(t => t.Id == id1);
+    var teamB = await context.Teams.FirstOrDefaultAsync(t => t.Id == id2);
+
+    if (teamA != null && teamB != null)
+    {
+        var match2 = new Match
+        {
+            HomeTeam = teamA,
+            AwayTeam = teamB,
+            TicketPrice = 200,
+            Date = DateTime.Now
+        };
+        await context.Matches.AddAsync(match2);
+        await context.SaveChangesAsync();
+    }
+```
+
+### READ 
+
+#### Non-Relational
+
+
+##### Get all records
+
+```csharp
+async Task<List<League>> getMany()
+{
+    return await context.Leagues.ToListAsync();
+}
+```
+
+##### Get single records
+
+```csharp
+    //    v1
+    var league1 = await context.Leagues.FindAsync(id);
+    Console.WriteLine($"League 1: {league1.Name}");//nullable 
+    //    v2
+    var league2 = await context.Leagues.FirstOrDefaultAsync(l => l.Id == id);
+    Console.WriteLine($"League 2: {league2.Name}");//nullable
+    // v3
+    var league3 = await context.Leagues.Where(l => l.Id == id).SingleAsync();
+    Console.WriteLine($"League 3: {league3.Name}");//not nullable; throws exception if not found
+    // v4
+    var league4 = await context.Leagues.SingleAsync(l => l.Id == id);
+    Console.WriteLine($"League 4: {league4.Name}");//not nullable; throws exception if not found
+```
+
+##### Get records with including it's Parent record
+
+```csharp
+async Task<List<Team>> includeParentRelated()
+{
+    return await context.Teams.Include(t => t.League).ToListAsync();
+}
+
+foreach (var team in teams){
+    Console.WriteLine($"Team: {team.Name}, League: {team.League.Name}");
+}
+```
+
+##### Get a record with including it's Child records
+
+```csharp
+async Task<League> includeChildRelated(int parentId)
+{
+    return await context.Leagues.Where(l => l.Id == parentId).Include(l => l.Teams).SingleAsync();
+}
+
+var league = await includeChildRelated(league1Id);
+Console.WriteLine($"League: {league.Name}");
+foreach (var team in league11.Teams)
+{
+    Console.WriteLine($"Team: {team.Name}");
+    break;
+}
+```
+
+##### Select many-to-many 
+
+```csharp
+async Task<List<Match>> includeManyToMany()
+{
+    return await context.Matches.Include(m => m.HomeTeam).Include(m => m.AwayTeam).ToListAsync();
+}
+var matches = await includeManyToMany();
+foreach (var match in matches)
+{
+    Console.WriteLine($"Match: {match.HomeTeam.Name} vs {match.AwayTeam.Name}");
+    // break;
+}
+```
