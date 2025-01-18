@@ -1,0 +1,52 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Learn.Web</title>
+    <script type="importmap"></script>
+
+    <!-- tailwind -->
+    <link rel="stylesheet" href="~/css/tailwind.out.css" asp-append-version="true" />
+
+</head>
+<body>
+    <header>
+        <nav class="p-4 bg-gray-200">
+            <div class="flex flex-row items-center gap-2">
+                <a class="text-2xl font-semibold" asp-area="" asp-controller="Home" asp-action="Index">Learn.Web</a>
+                <button class="" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                        aria-expanded="false" aria-label="Toggle navigation">
+                    <span class=""></span>
+                </button>
+                <div class="flex-1 flex flex-row justify-between items-center text-lg">
+                <ul class="flex flex-row gap-2">
+                        <li class="">
+                            <a class="" asp-area="" asp-controller="Home" asp-action="Index">Home</a>
+                        </li>
+                        <li class="">
+                            <a class="" asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+                        </li>
+                    </ul>
+                    <partial name="_LoginPartial" />
+                </div>
+            </div>
+        </nav>
+    </header>
+    <div class="container">
+        <main role="main" class="pb-3">
+            @RenderBody()
+        </main>
+    </div>
+
+    <footer class="border-top footer text-muted">
+        <div class="container">
+            &copy; 2025 - Learn.Web - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+        </div>
+    </footer>
+    
+    <!-- flowbite tailwind plugin  -->
+    <script src="https://cdn.jsdelivr.net/npm/flowbite@2.5.2/dist/flowbite.min.js"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
