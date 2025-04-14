@@ -1,6 +1,7 @@
 ﻿@using Microsoft.AspNetCore.Identity
-@inject SignInManager<IdentityUser> SignInManager
-@inject UserManager<IdentityUser> UserManager
+@using Learn.Entities;
+@inject SignInManager<AppUser> SignInManager
+@inject UserManager<AppUser> UserManager
 
 <ul class="flex flex-row gap-2">
 @if (SignInManager.IsSignedIn(User))

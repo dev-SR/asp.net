@@ -42,6 +42,7 @@
         - [Get records with including it's Parent record](#get-records-with-including-its-parent-record)
         - [Get a record with including it's Child records](#get-a-record-with-including-its-child-records)
         - [Select many-to-many](#select-many-to-many)
+  - [Data Seeding](#data-seeding)
 
 ## Defining a Model
 
@@ -729,5 +730,73 @@ foreach (var match in matches)
 {
     Console.WriteLine($"Match: {match.HomeTeam.Name} vs {match.AwayTeam.Name}");
     // break;
+}
+```
+
+## Data Seeding
+
+```csharp
+using Bogus;
+public static class SeedData
+{
+    public static (List<League>, List<Team>, List<Match>, List<Coach>) get(int leagueCount, int teamPerLeagueCount)
+    {
+        var faker = new Faker();
+        
+        // Generate leagues and teams as before
+        var leagueGenerator = new Faker<League>()
+            .RuleFor(m => m.Id, f => Guid.NewGuid())
+            .RuleFor(m => m.Name, f => f.Name.Random.Word());
+    
+        List<League> leagues = leagueGenerator.Generate(leagueCount);
+        List<Team> teams = [];
+        List<Match> matches = [];
+        List<Coach> coaches = [];
+    
+        // Generate teams per league
+        foreach (var league in leagues)
+        {
+            var teamGenerator = new Faker<Team>()
+                .RuleFor(d => d.Id, f => Guid.NewGuid())
+                .RuleFor(d => d.Name, f => f.Company.CompanyName())
+                .RuleFor(d => d.LeagueId, f => league.Id);
+    
+            var leagueTeams = teamGenerator.Generate(teamPerLeagueCount);
+            teams.AddRange(leagueTeams);
+    
+            // Generate matches between teams in the same league
+            for (int i = 0; i < leagueTeams.Count; i++)
+            {
+                for (int j = i + 1; j < leagueTeams.Count; j++)
+                {
+                    var match = new Match
+                    {
+                        Id = Guid.NewGuid(),
+                        HomeTeamId = leagueTeams[i].Id,
+                        AwayTeamId = leagueTeams[j].Id,
+                        TicketPrice = faker.Random.Decimal(10, 100),
+                        Date = faker.Date.Future()
+                    };
+                    matches.Add(match);
+                }
+            }
+        }
+    
+        // Generate and assign coaches to random teams
+        var coachGenerator = new Faker<Coach>()
+            .RuleFor(c => c.Id, f => Guid.NewGuid())
+            .RuleFor(c => c.Name, f => f.Name.FullName());
+    
+        // Assign coaches to 70% of teams randomly
+        var teamsToAssignCoach = teams.OrderBy(x => faker.Random.Int()).Take((int)(teams.Count * 0.7));
+        foreach (var team in teamsToAssignCoach)
+        {
+            var coach = coachGenerator.Generate();
+            coach.TeamId = team.Id;
+            coaches.Add(coach);
+        }
+    
+        return (leagues, teams, matches, coaches);
+    }
 }
 ```

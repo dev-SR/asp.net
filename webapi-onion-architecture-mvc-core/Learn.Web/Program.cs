@@ -1,20 +1,23 @@
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using Learn.Web.Data;
+using DotNetEnv;
+using Learn.Web.Extensions;
+
 
 var builder = WebApplication.CreateBuilder(args);
-
+// Load environment variables from the .env file
+Env.Load();
 // Add services to the container.
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(connectionString));
-builder.Services.AddDatabaseDeveloperPageExceptionFilter();
+// enable db context
+builder.Services.InjectDbContext();
+// enable identity auth
+builder.Services.AddIdentityHandlersAndStores();
 
-builder.Services.AddDefaultIdentity<IdentityUser>(options => options.SignIn.RequireConfirmedAccount = true)
-    .AddEntityFrameworkStores<ApplicationDbContext>();
+builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
+
+// apply migrations
+app.ApplyMigrations();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -31,7 +34,7 @@ else
 app.UseHttpsRedirection();
 app.UseRouting();
 
-app.UseAuthorization();
+app.AddIdentityAuthMiddlewares();//NEW
 
 app.MapStaticAssets();
 
