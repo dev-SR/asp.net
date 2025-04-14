@@ -25,6 +25,7 @@
         - [With Configuration Files](#with-configuration-files)
         - [With `Bogus` Library](#with-bogus-library)
         - [Suppress PendingModelChangesWarning](#suppress-pendingmodelchangeswarning)
+    - [Dependency Injection](#dependency-injection)
 
 
 ## MVC webapi
@@ -790,3 +791,77 @@ public class RepositoryContext : DbContext
     }
 
 ```
+
+### Dependency Injection
+
+
+```csharp
+class Engine{}
+
+class Car : Engine 
+{
+    
+}
+```
+
+
+`Car : Engine`  but **is** `Car` a `Engine`? answer is **NO**
+
+
+```csharp
+class Engine{}
+
+class Car 
+{
+   public Engine engine = null; 
+}
+```
+
+
+This means `Car` has an `Engine` -> this is call **`Composition`** in OOP.
+
+Here if we used inheritance` Car : Engine` we dont need to create `new Engine()`, we just need to create car obj -> `new Car()`.
+
+But with **Composition** new need to create `Engine` object separately:
+
+There's two way:
+
+1. With `Setter`
+
+
+```csharp
+class Engine{}
+
+class Car 
+{
+   public Engine engine {get;set;} = null; 
+}
+
+var engine=new Engine(); // Car is dependent of an engine
+var car = new Car();
+car.Engine = engine;// Dependency Injection
+```
+
+But asp.net won't be able to perform this operation on behalf of us.
+
+2. Using `Constructor`
+
+
+```csharp
+class Engine{}
+
+class Car 
+{
+   public Engine _engine = null; 
+   Car(Engine engine)
+   {
+       _engine = engine;
+   }
+}
+var engine = new Engine();
+var car = new Car(engine);// Dependency Injection
+```
+
+In Asp.net well tell asp to inject our dependency via `DI`:
+
+`builder.Service.AddTransient<T,Engine>`; behind the scene this `new Car(new Engine())`;
